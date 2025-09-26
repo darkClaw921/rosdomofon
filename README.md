@@ -1,4 +1,8 @@
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/rosdomofon?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/rosdomofon)
+
 ### `rosdomofon.py`
+
+**Документация росдомофона [https://rdba.rosdomofon.com/swagger-ui.html#/]()**
 
 **Назначение**: Основной модуль для работы с API РосДомофон
 
@@ -48,7 +52,6 @@
   - `send_message()` - отправка сообщения одному абоненту
   - `send_message_to_multiple()` - отправка группового сообщения
   - `close()` - закрытие всех соединений
-
 
 # пример получения аккаунта по номеру телефона
 
