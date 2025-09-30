@@ -17,7 +17,10 @@ class RosDomofonKafkaClient:
     def __init__(self, 
                  bootstrap_servers: str = "localhost:9092",
                  company_short_name: str = "",
-                 group_id: Optional[str] = None):
+                 group_id: Optional[str] = None,
+                 username: Optional[str] = None,
+                 password: Optional[str] = None,
+                 ssl_ca_cert_path: Optional[str] = None):
         """
         Инициализация Kafka клиента
         
@@ -25,17 +28,26 @@ class RosDomofonKafkaClient:
             bootstrap_servers (str): Адрес Kafka брокеров
             company_short_name (str): Короткое название компании для формирования топиков
             group_id (str, optional): ID группы потребителей
+            username (str, optional): Имя пользователя для SASL аутентификации
+            password (str, optional): Пароль для SASL аутентификации
+            ssl_ca_cert_path (str, optional): Путь к SSL сертификату CA
             
         Example:
             >>> kafka_client = RosDomofonKafkaClient(
-            ...     bootstrap_servers="kafka.example.com:9092",
+            ...     bootstrap_servers="kafka.rosdomofon.com:443",
             ...     company_short_name="Video_SB",
-            ...     group_id="rosdomofon_group"
+            ...     group_id="rosdomofon_group",
+            ...     username="kafka_user",
+            ...     password="kafka_pass",
+            ...     ssl_ca_cert_path="/path/to/kafka-ca.crt"
             ... )
         """
         self.bootstrap_servers = bootstrap_servers
         self.company_short_name = company_short_name
         self.group_id = group_id or f"rosdomofon_{company_short_name}_group"
+        self.username = username
+        self.password = password
+        self.ssl_ca_cert_path = ssl_ca_cert_path
         
         # Формирование названий топиков
         self.incoming_topic = f"MESSAGES_IN_{company_short_name}"
@@ -50,27 +62,111 @@ class RosDomofonKafkaClient:
         logger.info(f"Инициализация Kafka клиента для компании {company_short_name}")
         logger.info(f"Топик входящих сообщений: {self.incoming_topic}")
         logger.info(f"Топик исходящих сообщений: {self.outgoing_topic}")
+        
+        # Проверка доступных топиков
+        self._check_available_topics()
     
     def _create_consumer(self) -> KafkaConsumer:
         """Создать Kafka consumer"""
-        return KafkaConsumer(
-            self.incoming_topic,
-            bootstrap_servers=self.bootstrap_servers,
-            group_id=self.group_id,
-            auto_offset_reset='latest',
-            enable_auto_commit=True,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            consumer_timeout_ms=1000
-        )
+        config = {
+            'bootstrap_servers': self.bootstrap_servers,
+            'group_id': self.group_id,
+            'auto_offset_reset': 'earliest',  # Читать с начала, если нет сохраненного offset
+            'enable_auto_commit': True,
+            'value_deserializer': lambda x: json.loads(x.decode('utf-8')),
+            'consumer_timeout_ms': 1000,
+            'api_version': (0, 10, 0),
+            'request_timeout_ms': 30000,
+            'session_timeout_ms': 10000,
+            'heartbeat_interval_ms': 3000,
+        }
+        
+        # Добавление SSL/SASL конфигурации при наличии учетных данных
+        if self.username and self.password:
+            config.update({
+                'security_protocol': 'SASL_SSL',
+                'sasl_mechanism': 'SCRAM-SHA-512',
+                'sasl_plain_username': self.username,
+                'sasl_plain_password': self.password,
+                'ssl_check_hostname': True,
+            })
+            
+            if self.ssl_ca_cert_path:
+                config['ssl_cafile'] = self.ssl_ca_cert_path
+                logger.info(f"Используется SSL сертификат: {self.ssl_ca_cert_path}")
+            else:
+                # Если нет сертификата, пропускаем проверку SSL
+                config['ssl_check_hostname'] = False
+                import ssl
+                config['ssl_context'] = ssl.create_default_context()
+                config['ssl_context'].check_hostname = False
+                config['ssl_context'].verify_mode = ssl.CERT_NONE
+                logger.warning("Проверка SSL сертификата отключена")
+            
+            logger.info(f"Подключение к Kafka с SASL_SSL аутентификацией (пользователь: {self.username})")
+        
+        return KafkaConsumer(self.incoming_topic, **config)
     
     def _create_producer(self) -> KafkaProducer:
         """Создать Kafka producer"""
-        return KafkaProducer(
-            bootstrap_servers=self.bootstrap_servers,
-            value_serializer=lambda x: json.dumps(x, ensure_ascii=False).encode('utf-8'),
-            acks='all',
-            retries=3
-        )
+        config = {
+            'bootstrap_servers': self.bootstrap_servers,
+            'value_serializer': lambda x: json.dumps(x, ensure_ascii=False).encode('utf-8'),
+            'acks': 'all',
+            'retries': 3,
+            'api_version': (0, 10, 0),
+            'request_timeout_ms': 30000,
+        }
+        
+        # Добавление SSL/SASL конфигурации при наличии учетных данных
+        if self.username and self.password:
+            config.update({
+                'security_protocol': 'SASL_SSL',
+                'sasl_mechanism': 'SCRAM-SHA-512',
+                'sasl_plain_username': self.username,
+                'sasl_plain_password': self.password,
+                'ssl_check_hostname': True,
+            })
+            
+            if self.ssl_ca_cert_path:
+                config['ssl_cafile'] = self.ssl_ca_cert_path
+            else:
+                # Если нет сертификата, пропускаем проверку SSL
+                config['ssl_check_hostname'] = False
+                import ssl
+                config['ssl_context'] = ssl.create_default_context()
+                config['ssl_context'].check_hostname = False
+                config['ssl_context'].verify_mode = ssl.CERT_NONE
+            
+            logger.info(f"Producer подключается с SASL_SSL аутентификацией")
+        
+        return KafkaProducer(**config)
+    
+    def _check_available_topics(self):
+        """Проверка доступных топиков в Kafka"""
+        try:
+            logger.info("Проверка доступных топиков...")
+            temp_consumer = self._create_consumer()
+            topics = temp_consumer.topics()
+            temp_consumer.close()
+            
+            logger.info(f"Доступные топики Kafka ({len(topics)} шт.):")
+            for topic in sorted(topics):
+                logger.info(f"  - {topic}")
+            
+            # Проверяем наличие нужных топиков
+            if self.incoming_topic in topics:
+                logger.info(f"✓ Топик {self.incoming_topic} найден")
+            else:
+                logger.warning(f"✗ Топик {self.incoming_topic} не найден")
+                
+            if self.outgoing_topic in topics:
+                logger.info(f"✓ Топик {self.outgoing_topic} найден")
+            else:
+                logger.warning(f"✗ Топик {self.outgoing_topic} не найден")
+                
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка топиков: {e}")
     
     def set_message_handler(self, handler: Callable[[KafkaIncomingMessage], None]):
         """
@@ -135,38 +231,76 @@ class RosDomofonKafkaClient:
     def _consume_messages(self):
         """Внутренний метод для потребления сообщений"""
         logger.info(f"Начато прослушивание топика {self.incoming_topic}")
+        logger.info(f"Consumer group ID: {self.group_id}")
+        logger.info(f"Подписка на топик: {self.consumer.subscription()}")
+        
+        partitions_assigned = False
         
         try:
             while self._running and self.consumer:
                 try:
                     message_pack = self.consumer.poll(timeout_ms=1000)
                     
+                    # Проверяем назначение партиций после первого poll
+                    if not partitions_assigned:
+                        assigned = self.consumer.assignment()
+                        if assigned:
+                            logger.info(f"✓ Назначенные партиции: {assigned}")
+                            for tp in assigned:
+                                position = self.consumer.position(tp)
+                                logger.info(f"  Партиция {tp.partition}: текущая позиция = {position}")
+                            partitions_assigned = True
+                        else:
+                            logger.debug("Ожидание назначения партиций...")
+                    
+                    if message_pack:
+                        logger.debug(f"Получен пакет сообщений: {len(message_pack)} партиций")
+                    
                     for topic_partition, messages in message_pack.items():
+                        logger.debug(f"Обработка {len(messages)} сообщений из партиции {topic_partition.partition}")
+                        
                         for message in messages:
                             try:
+                                logger.debug(f"Сырые данные сообщения: {message.value}")
+                                
                                 # Валидация и создание Pydantic модели
                                 kafka_message = KafkaIncomingMessage(**message.value)
                                 
                                 logger.info(
-                                    f"Получено сообщение от абонента {kafka_message.from_abonent.phone}: "
-                                    f"{kafka_message.message[:50]}..."
+                                    f"✉️ Получено сообщение от абонента {kafka_message.from_abonent.phone}: "
+                                    f"{kafka_message.text[:50] if kafka_message.text else 'Пустое сообщение'}..."
                                 )
                                 
                                 # Вызов обработчика
                                 if self._message_handler:
+                                    logger.debug("Вызов обработчика сообщений...")
                                     self._message_handler(kafka_message)
+                                    logger.debug("Обработчик выполнен")
+                                else:
+                                    logger.warning("Обработчик сообщений не установлен!")
                                 
                             except Exception as e:
                                 logger.error(f"Ошибка обработки сообщения: {e}")
                                 logger.error(f"Данные сообщения: {message.value}")
+                                import traceback
+                                logger.error(f"Traceback: {traceback.format_exc()}")
+                    else:
+                        # Если нет сообщений, логируем раз в 10 секунд
+                        if not hasattr(self, '_last_no_msg_log') or time.time() - self._last_no_msg_log > 10:
+                            logger.debug(f"Ожидание сообщений из {self.incoming_topic}...")
+                            self._last_no_msg_log = time.time()
                                 
                 except Exception as e:
                     if self._running:  # Логируем только если не остановили принудительно
                         logger.error(f"Ошибка при получении сообщений: {e}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
                         time.sleep(1)  # Небольшая пауза перед повтором
                         
         except Exception as e:
             logger.error(f"Критическая ошибка в потоке потребления: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
             logger.info("Завершен поток потребления сообщений")
     
@@ -194,7 +328,7 @@ class RosDomofonKafkaClient:
         Example:
             >>> success = kafka_client.send_message(
             ...     to_abonent_id=1574870,
-            ...     to_abonent_phone=79308316689,
+            ...     to_abonent_phone=79308312222,
             ...     message="Ответ на ваше сообщение",
             ...     from_abonent_id=0,  # Системное сообщение
             ...     from_abonent_phone=0
@@ -230,7 +364,7 @@ class RosDomofonKafkaClient:
             # Отправка сообщения
             future = self.producer.send(
                 self.outgoing_topic,
-                value=kafka_message.dict(by_alias=True)
+                value=kafka_message.model_dump(by_alias=True)
             )
             
             # Ждем подтверждения отправки
@@ -267,8 +401,8 @@ class RosDomofonKafkaClient:
             
         Example:
             >>> recipients = [
-            ...     {"id": 1574870, "phone": 79308316689, "company_id": 1292},
-            ...     {"id": 1480844, "phone": 79061343115, "company_id": 1292}
+            ...     {"id": 1574870, "phone": 79308312222, "company_id": 1292},
+            ...     {"id": 1480844, "phone": 79061343111, "company_id": 1292}
             ... ]
             >>> success = kafka_client.send_message_to_multiple(
             ...     to_abonents=recipients,
@@ -305,7 +439,7 @@ class RosDomofonKafkaClient:
             # Отправка сообщения
             future = self.producer.send(
                 self.outgoing_topic,
-                value=kafka_message.dict(by_alias=True)
+                value=kafka_message.model_dump(by_alias=True)
             )
             
             record_metadata = future.get(timeout=10)
@@ -342,3 +476,4 @@ class RosDomofonKafkaClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Контекстный менеджер - выход"""
         self.close()
+

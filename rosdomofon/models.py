@@ -196,18 +196,53 @@ class KafkaFromAbonent(BaseModel):
     """Отправитель сообщения в Kafka"""
     id: int
     phone: int
+    company_id: Optional[int] = Field(None, alias="companyId")
+    restriction_push_token_ids: Optional[List] = Field(default_factory=list, alias="restrictionPushTokenIds")
+    
+    class Config:
+        populate_by_name = True
+
+
+class LocalizedPush(BaseModel):
+    """Локализованное push-уведомление"""
+    message: Optional[str] = None
+    message_key: Optional[str] = Field(None, alias="messageKey")
+    message_args: Optional[List] = Field(None, alias="messageArgs")
+    
+    class Config:
+        populate_by_name = True
 
 
 class KafkaIncomingMessage(BaseModel):
     """Входящее сообщение из Kafka (MESSAGES_IN топик)"""
     channel: str
-    delivery_method: str = Field(alias="deliveryMethod")
+    delivery_method: Optional[str] = Field(None, alias="deliveryMethod")
     from_abonent: KafkaFromAbonent = Field(alias="fromAbonent")
-    message: str
-    to_abonents: List[KafkaAbonentInfo] = Field(alias="toAbonents")
+    message: Optional[str] = None
+    to_abonents: Optional[List[KafkaAbonentInfo]] = Field(None, alias="toAbonents")
+    broadcast: Optional[bool] = False
+    sms_message: Optional[str] = Field(None, alias="smsMessage")
+    message_code: Optional[str] = Field(None, alias="messageCode")
+    chat_id: Optional[str] = Field(None, alias="chatId")
+    wait_response: Optional[bool] = Field(None, alias="waitResponse")
+    properties: Optional[dict] = None
+    providers: Optional[List] = None
+    app_names: Optional[List] = Field(None, alias="appNames")
+    localized_push: Optional[LocalizedPush] = Field(None, alias="localizedPush")
+    localized_sms: Optional[dict] = Field(None, alias="localizedSms")
+    image_url: Optional[str] = Field(None, alias="imageUrl")
     
     class Config:
         populate_by_name = True
+    
+    @property
+    def text(self) -> str:
+        """Получить текст сообщения из message или localizedPush.message"""
+        if self.message:
+            return self.message
+        if self.localized_push and self.localized_push.message:
+            return self.localized_push.message
+        return ""
 
 
 class KafkaOutgoingMessage(BaseModel):
@@ -215,8 +250,9 @@ class KafkaOutgoingMessage(BaseModel):
     channel: str = "support"
     delivery_method: str = Field(default="PUSH", alias="deliveryMethod")
     from_abonent: Optional[KafkaFromAbonent] = Field(None, alias="fromAbonent")
-    message: str
+    message: Optional[str] = None
     to_abonents: List[KafkaAbonentInfo] = Field(alias="toAbonents")
+    localized_push: Optional[LocalizedPush] = Field(None, alias="localizedPush")
     
     class Config:
         populate_by_name = True

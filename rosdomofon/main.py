@@ -4,10 +4,23 @@ import os
 load_dotenv()
 USERNAME = os.getenv("USERNAME")
 PASSWORD = os.getenv("PASSWORD")
-
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_USERNAME = os.getenv("KAFKA_USERNAME")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
+KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
+KAFKA_SSL_CA_CERT_PATH = os.getenv("KAFKA_SSL_CA_CERT_PATH")
+print(f'{KAFKA_SSL_CA_CERT_PATH=}')
 def main():
     print("Hello from rosdomofon-bitrix24!")
-    api = RosDomofonAPI(username=USERNAME, password=PASSWORD)
+    api = RosDomofonAPI(
+        username=USERNAME, 
+        password=PASSWORD, 
+        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, 
+        kafka_username=KAFKA_USERNAME, 
+        kafka_password=KAFKA_PASSWORD, 
+        kafka_group_id=KAFKA_GROUP_ID,
+        kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH
+        )
     api.authenticate()
     
     account = api.get_account_by_phone(79308312222)

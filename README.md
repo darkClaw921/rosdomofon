@@ -1,4 +1,8 @@
-[![PyPI Downloads](https://static.pepy.tech/personalized-badge/rosdomofon?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/rosdomofon)
+
+
+![PyPI - Downloads](https://img.shields.io/pypi/dm/rosdomofon)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/rosdomofon)
+
 
 ### `rosdomofon.py`
 
@@ -102,3 +106,15 @@ api.start_kafka_consumer()
 ```python
 api.send_kafka_message(1574870, 79308312233, "Ответ через Kafka")
 ```
+# short name company
+для получения short name company нужно получить все аккаунты и найти short name company
+https://rdba.rosdomofon.com/abonents-service/api/v1/accounts
+
+```python
+accounts = api.get_accounts()
+for account in accounts:
+    print(account.company.short_name)
+```
+
+# company id
+для получения company id нужно получить все аккаунты и найти company id

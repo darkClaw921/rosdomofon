@@ -24,7 +24,10 @@ class RosDomofonAPI:
                  password: str,
                  kafka_bootstrap_servers: Optional[str] = None,
                  company_short_name: Optional[str] = None,
-                 kafka_group_id: Optional[str] = None):
+                 kafka_group_id: Optional[str] = None,
+                 kafka_username: Optional[str] = None,
+                 kafka_password: Optional[str] = None,
+                 kafka_ssl_ca_cert_path: Optional[str] = None):
         self.username = username
         self.password = password
         self.access_token: Optional[str] = None
@@ -36,7 +39,10 @@ class RosDomofonAPI:
             self.kafka_client = RosDomofonKafkaClient(
                 bootstrap_servers=kafka_bootstrap_servers,
                 company_short_name=company_short_name,
-                group_id=kafka_group_id
+                group_id=kafka_group_id,
+                username=kafka_username,
+                password=kafka_password,
+                ssl_ca_cert_path=kafka_ssl_ca_cert_path
             )
         
         logger.info("Инициализация клиента РосДомофон API")

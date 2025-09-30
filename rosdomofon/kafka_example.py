@@ -4,6 +4,18 @@
 import time
 from rosdomofon import RosDomofonAPI
 from models import KafkaIncomingMessage
+from dotenv import load_dotenv
+import os
+load_dotenv()
+USERNAME = os.getenv("USERNAME")
+PASSWORD = os.getenv("PASSWORD")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+KAFKA_USERNAME = os.getenv("KAFKA_USERNAME")
+KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
+KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
+KAFKA_SSL_CA_CERT_PATH = os.getenv("KAFKA_SSL_CA_CERT_PATH")
+print(f'{KAFKA_SSL_CA_CERT_PATH=}')
+
 
 
 def handle_incoming_message(message: KafkaIncomingMessage):
@@ -14,9 +26,10 @@ def handle_incoming_message(message: KafkaIncomingMessage):
         message: Входящее сообщение от абонента
     """
     print(f"\n📨 Новое сообщение от абонента {message.from_abonent.phone}:")
-    print(f"   Текст: {message.message}")
+    print(f"   Текст: {message.text}")
     print(f"   Канал: {message.channel}")
     print(f"   ID отправителя: {message.from_abonent.id}")
+    print(f"   Company ID: {message.from_abonent.company_id}")
     
     # Пример автоответа через REST API
     # api.send_message_to_abonent(
@@ -31,11 +44,15 @@ def main():
     
     # Инициализация API с поддержкой Kafka
     api = RosDomofonAPI(
-        username="your_username",
-        password="your_password",
-        kafka_bootstrap_servers="localhost:9092",  # Адрес Kafka брокера
-        company_short_name="Your_Company_Name",    # Название компании для топиков
-        kafka_group_id="rosdomofon_example_group"  # ID группы потребителей
+            username=USERNAME,
+        password=PASSWORD,
+        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,  # Адрес Kafka брокера
+        company_short_name="INDIVIDUALNIY_PREDPRINIMATEL_TROFIMOV_DMITRIY_GENNADEVICH",    # Название компании для топиков
+        kafka_group_id=KAFKA_GROUP_ID,  # ID группы потребителей
+        kafka_username=KAFKA_USERNAME,
+        kafka_password=KAFKA_PASSWORD,
+        kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH
+
     )
     
     try:
@@ -54,35 +71,35 @@ def main():
         print("✅ Kafka consumer запущен! Ожидание сообщений...")
         
         # Пример отправки сообщения через Kafka
-        print("\n📤 Отправка тестового сообщения через Kafka...")
-        success = api.send_kafka_message(
-            to_abonent_id=1574870,
-            to_abonent_phone=79308316689,
-            message="Тестовое сообщение через Kafka",
-            company_id=1292
-        )
+        # print("\n📤 Отправка тестового сообщения через Kafka...")
+        # success = api.send_kafka_message(
+        #     to_abonent_id=1574870,
+        #     to_abonent_phone=79308316689,
+        #     message="Тестовое сообщение через Kafka",
+        #     # company_id=1292
+        # )
         
-        if success:
-            print("✅ Сообщение отправлено через Kafka!")
-        else:
-            print("❌ Ошибка отправки сообщения через Kafka")
+        # if success:
+        #     print("✅ Сообщение отправлено через Kafka!")
+        # else:
+        #     print("❌ Ошибка отправки сообщения через Kafka")
         
         # Пример группового сообщения
-        print("\n📤 Отправка группового сообщения...")
-        recipients = [
-            {"id": 1574870, "phone": 79308316689, "company_id": 1292},
-            {"id": 1480844, "phone": 79061343115, "company_id": 1292}
-        ]
+        # print("\n📤 Отправка группового сообщения...")
+        # recipients = [
+        #     {"id": 1574870, "phone": 79308316689, "company_id": 1292}
+        #     # {"id": 1480844, "phone": 79061343115, "company_id": 1292}
+        # ]
         
-        success = api.send_kafka_message_to_multiple(
-            to_abonents=recipients,
-            message="Групповое уведомление через Kafka"
-        )
+        # success = api.send_kafka_message_to_multiple(
+        #     to_abonents=recipients,
+        #     message="Групповое уведомление через Kafka"
+        # )
         
-        if success:
-            print("✅ Групповое сообщение отправлено!")
-        else:
-            print("❌ Ошибка отправки группового сообщения")
+        # if success:
+        #     print("✅ Групповое сообщение отправлено!")
+        # else:
+        #     print("❌ Ошибка отправки группового сообщения")
         
         # Работа в течение некоторого времени
         print("\n⏳ Ожидание входящих сообщений (30 секунд)...")
@@ -112,3 +129,4 @@ if __name__ == "__main__":
     print("🔄 Запуск примера Kafka интеграции с РосДомофон")
     print("=" * 50)
     main()
+
