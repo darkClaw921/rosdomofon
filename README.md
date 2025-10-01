@@ -60,6 +60,12 @@
 # пример получения аккаунта по номеру телефона
 
 ```python
+from rosdomofon.rosdomofon import RosDomofonAPI
+api = RosDomofonAPI(
+    username="user", 
+    password="pass",
+)
+api.authenticate()
 account = api.get_account_by_phone(79308325215)
 print(account)
 print(account.owner.id) # abonent_id
@@ -84,6 +90,7 @@ api.send_message_to_abonent(abonent_id, 'support', f'вы написали {mess
 ### Инициализация с Kafka поддержкой
 
 ```python
+from rosdomofon.rosdomofon import RosDomofonAPI
 api = RosDomofonAPI(
     username="user", password="pass",
     kafka_bootstrap_servers="kafka.example.com:9092",
