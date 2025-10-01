@@ -136,7 +136,7 @@ class RosDomofonAPI:
             Optional[Account]: Объект с аккаунтом или None если не найден
             
         Example:
-            >>> account = api.get_account_by_phone(79308316689)
+            >>> account = api.get_account_by_phone(79308312222)
             >>> if account:
             ...     print(f"ID аккаунта: {account.id}")
             ...     print(f"Заблокирован: {account.blocked}")

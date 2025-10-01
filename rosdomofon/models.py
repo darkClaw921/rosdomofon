@@ -28,7 +28,7 @@ class Company(BaseModel):
     """Компания"""
     id: int
     short_name: str = Field(alias="shortName")
-    licensee_short: str = Field(alias="licenseeShort")
+    licensee_short: Optional[str] = Field(None, alias="licenseeShort")
     
     class Config:
         populate_by_name = True
@@ -108,10 +108,97 @@ class CreateConnectionResponse(BaseModel):
     id: int
 
 
-class Connection(BaseModel):
-    """Подключение"""
+class Country(BaseModel):
+    """Страна"""
+    name: str
+    short_name: str = Field(alias="shortName")
+    
+    class Config:
+        populate_by_name = True
+
+
+class Entrance(BaseModel):
+    """Подъезд"""
     id: int
-    # Дополнительные поля будут добавлены по мере необходимости
+    number: str
+    flat_start: int = Field(alias="flatStart")
+    flat_end: int = Field(alias="flatEnd")
+    additional_flat_ranges: List = Field(default_factory=list, alias="additionalFlatRanges")
+    
+    class Config:
+        populate_by_name = True
+
+
+class House(BaseModel):
+    """Дом"""
+    id: int
+    number: str
+
+
+class Street(BaseModel):
+    """Улица"""
+    id: int
+    name: str
+    code_fias: str = Field(alias="codeFias")
+    code_kladr: str = Field(alias="codeKladr")
+    
+    class Config:
+        populate_by_name = True
+
+
+class Address(BaseModel):
+    """Адрес"""
+    city: str
+    country: Country
+    entrance: Entrance
+    flat: int
+    house: House
+    street: Street
+
+
+class Flat(BaseModel):
+    """Квартира"""
+    id: int
+    account_id: int = Field(alias="accountId")
+    address: Address
+    virtual: bool
+    
+    class Config:
+        populate_by_name = True
+
+
+class DelegationTunings(BaseModel):
+    """Настройки делегирования"""
+    limit: Optional[int] = None
+
+
+class ServiceInfo(BaseModel):
+    """Информация об услуге"""
+    id: int
+    company_id: int = Field(alias="companyId")
+    created_at: int = Field(alias="createdAt")
+    custom_name: str = Field(alias="customName")
+    delegation_tunings: DelegationTunings = Field(alias="delegationTunings")
+    name: str
+    type: str
+    
+    class Config:
+        populate_by_name = True
+
+
+class Connection(BaseModel):
+    """Подключение услуги к квартире"""
+    id: int
+    account: Account
+    blocked: bool
+    currency: str
+    delegation_tunings: DelegationTunings = Field(alias="delegationTunings")
+    flat: Flat
+    service: ServiceInfo
+    tariff: float
+    
+    class Config:
+        populate_by_name = True
 
 
 # Модели для сообщений

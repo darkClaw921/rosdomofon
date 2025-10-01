@@ -11,8 +11,9 @@
 **Содержит**:
 - **Модели авторизации**: `AuthResponse`
 - **Модели аккаунтов**: `Account`, `Owner`, `Company`, `CreateAccountRequest/Response`
-- **Модели квартир**: `CreateFlatRequest/Response`
-- **Модели услуг**: `Service`, `CreateConnectionRequest/Response`, `Connection`
+- **Модели квартир**: `CreateFlatRequest/Response`, `Flat`
+- **Модели услуг**: `Service`, `ServiceInfo`, `CreateConnectionRequest/Response`, `Connection`, `DelegationTunings`
+- **Модели адресов**: `Address`, `Country`, `Street`, `House`, `Entrance`
 - **Модели сообщений**: `Message`, `MessagesResponse`, `SendMessageRequest`, `AbonentInfo`, `Pageable`, `Sort`
 - **Модели Kafka**: `KafkaIncomingMessage`, `KafkaOutgoingMessage`, `KafkaAbonentInfo`, `KafkaFromAbonent`, `LocalizedPush`
 
