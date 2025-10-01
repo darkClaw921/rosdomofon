@@ -5,13 +5,13 @@ from typing import List, Optional, Union
 import requests
 from loguru import logger
 from pprint import pprint
-from models import (
+from .models import (
     AuthResponse, Account, CreateAccountRequest, CreateAccountResponse,
     CreateFlatRequest, CreateFlatResponse, Service, CreateConnectionRequest,
     CreateConnectionResponse, Connection, SendMessageRequest, MessagesResponse,
     AbonentInfo, KafkaIncomingMessage
 )
-from kafka_client import RosDomofonKafkaClient
+from .kafka_client import RosDomofonKafkaClient
 
 
 class RosDomofonAPI:

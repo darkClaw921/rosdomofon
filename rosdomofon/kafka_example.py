@@ -2,8 +2,8 @@
 Пример использования Kafka интеграции с РосДомофон
 """
 import time
-from rosdomofon import RosDomofonAPI
-from models import KafkaIncomingMessage
+from .rosdomofon import RosDomofonAPI
+from .models import KafkaIncomingMessage
 from dotenv import load_dotenv
 import os
 load_dotenv()

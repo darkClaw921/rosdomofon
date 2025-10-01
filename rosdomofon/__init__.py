@@ -1,0 +1,1 @@
+from .rosdomofon import RosDomofonAPI

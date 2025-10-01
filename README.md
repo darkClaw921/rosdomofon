@@ -60,7 +60,7 @@
 # пример получения аккаунта по номеру телефона
 
 ```python
-from rosdomofon.rosdomofon import RosDomofonAPI
+from rosdomofon import RosDomofonAPI
 api = RosDomofonAPI(
     username="user", 
     password="pass",

@@ -32,9 +32,9 @@ def main():
     services = api.get_account_connections(account_id)
     print(services)
     connection_id=services[0].id
+    print(connection_id)
 
-
-    api.unblock_connection(connection_id)
+    # api.unblock_connection(connection_id)
     # service_connections = api.get_service_connections(connection_id)
     # print(service_connections)
 

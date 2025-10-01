@@ -8,7 +8,7 @@ from typing import Callable, Optional, Dict, Any
 from kafka import KafkaConsumer, KafkaProducer
 from loguru import logger
 
-from models import KafkaIncomingMessage, KafkaOutgoingMessage, KafkaAbonentInfo, KafkaFromAbonent
+from .models import KafkaIncomingMessage, KafkaOutgoingMessage, KafkaAbonentInfo, KafkaFromAbonent
 
 
 class RosDomofonKafkaClient:
