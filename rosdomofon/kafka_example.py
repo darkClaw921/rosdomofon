@@ -14,6 +14,7 @@ KAFKA_USERNAME = os.getenv("KAFKA_USERNAME")
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
 KAFKA_SSL_CA_CERT_PATH = os.getenv("KAFKA_SSL_CA_CERT_PATH")
+COMPANY_SHORT_NAME = os.getenv("COMPANY_SHORT_NAME")
 print(f'{KAFKA_SSL_CA_CERT_PATH=}')
 
 
@@ -47,7 +48,7 @@ def main():
             username=USERNAME,
         password=PASSWORD,
         kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,  # Адрес Kafka брокера
-        company_short_name="INDIVIDUALNIY_PREDPRINIMATEL_TROFIMOV_DMITRIY_GENNADEVICH",    # Название компании для топиков
+        company_short_name=COMPANY_SHORT_NAME,    # Название компании для топиков
         kafka_group_id=KAFKA_GROUP_ID,  # ID группы потребителей
         kafka_username=KAFKA_USERNAME,
         kafka_password=KAFKA_PASSWORD,
@@ -74,7 +75,7 @@ def main():
         # print("\n📤 Отправка тестового сообщения через Kafka...")
         # success = api.send_kafka_message(
         #     to_abonent_id=1574870,
-        #     to_abonent_phone=79308316689,
+        #     to_abonent_phone=79308312222,
         #     message="Тестовое сообщение через Kafka",
         #     # company_id=1292
         # )
@@ -87,7 +88,7 @@ def main():
         # Пример группового сообщения
         # print("\n📤 Отправка группового сообщения...")
         # recipients = [
-        #     {"id": 1574870, "phone": 79308316689, "company_id": 1292}
+        #     {"id": 1574870, "phone": 79308312222, "company_id": 1292}
         #     # {"id": 1480844, "phone": 79061343115, "company_id": 1292}
         # ]
         

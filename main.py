@@ -9,6 +9,7 @@ KAFKA_USERNAME = os.getenv("KAFKA_USERNAME")
 KAFKA_PASSWORD = os.getenv("KAFKA_PASSWORD")
 KAFKA_GROUP_ID = os.getenv("KAFKA_GROUP_ID")
 KAFKA_SSL_CA_CERT_PATH = os.getenv("KAFKA_SSL_CA_CERT_PATH")
+COMPANY_SHORT_NAME = os.getenv("COMPANY_SHORT_NAME")
 print(f'{KAFKA_SSL_CA_CERT_PATH=}')
 def main():
     print("Hello from rosdomofon-bitrix24!")
@@ -19,7 +20,8 @@ def main():
         kafka_username=KAFKA_USERNAME, 
         kafka_password=KAFKA_PASSWORD, 
         kafka_group_id=KAFKA_GROUP_ID,
-        kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH
+        kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH,
+        company_short_name=COMPANY_SHORT_NAME
         )
     api.authenticate()
     
