@@ -175,9 +175,9 @@ class DelegationTunings(BaseModel):
 class ServiceInfo(BaseModel):
     """Информация об услуге"""
     id: int
-    company_id: int = Field(alias="companyId")
+    company_id: Optional[int] = Field(None, alias="companyId")
     created_at: int = Field(alias="createdAt")
-    custom_name: str = Field(alias="customName")
+    custom_name: Optional[str] = Field(None, alias="customName")
     delegation_tunings: DelegationTunings = Field(alias="delegationTunings")
     name: str
     type: str
@@ -191,11 +191,11 @@ class Connection(BaseModel):
     id: int
     account: Account
     blocked: bool
-    currency: str
+    currency: Optional[str] = None
     delegation_tunings: DelegationTunings = Field(alias="delegationTunings")
     flat: Flat
     service: ServiceInfo
-    tariff: float
+    tariff: Optional[float] = None
     
     class Config:
         populate_by_name = True

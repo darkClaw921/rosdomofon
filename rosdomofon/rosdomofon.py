@@ -307,7 +307,18 @@ class RosDomofonAPI:
         response = self._make_request("GET", url, headers=headers)
         connections_data = response.json()
         return [Connection(**connection) for connection in connections_data]
-    
+
+    def get_all_services(self) -> List[Service]:
+        """
+        Получить все услуги с портала РосДомофон
+        """
+        url = f"{self.BASE_URL}/api/v1/services"
+        headers = self._get_headers()
+        response = self._make_request("GET", url, headers=headers)
+        services_data = response.json()
+        pprint(services_data)
+        return [Service(**service) for service in services_data]
+
     def block_account(self, account_number: str) -> bool:
         """
         Заблокировать аккаунт абонента (ограничить доступ ко всем объектам)

@@ -1,6 +1,7 @@
 from rosdomofon import RosDomofonAPI
 from dotenv import load_dotenv
 import os
+from pprint import pprint
 load_dotenv()
 USERNAME = os.getenv("USERNAME")
 PASSWORD = os.getenv("PASSWORD")
@@ -24,17 +25,19 @@ def main():
         company_short_name=COMPANY_SHORT_NAME
         )
     api.authenticate()
-    
-    account = api.get_account_by_phone(79308312222)
-    print(account)
-    abonent_id=account.owner.id
-    account_id=account.id
+
+    services = api.get_all_services()
+    pprint(services)
+    # account = api.get_account_by_phone(79308312222)
+    # print(account)
+    # abonent_id=account.owner.id
+    # account_id=account.id
 
     #получаем услуги абонента
-    services = api.get_account_connections(account_id)
-    print(services)
-    connection_id=services[0].id
-    print(connection_id)
+    # services = api.get_account_connections(account_id)
+    # print(services)
+    # connection_id=services[0].id
+    # print(connection_id)
 
     # api.unblock_connection(connection_id)
     # service_connections = api.get_service_connections(connection_id)

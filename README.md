@@ -3,6 +3,8 @@
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/rosdomofon)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/rosdomofon)
 
+# Поддержка и развитие
+Проект активно развивается. Вопросы и предложения по улучшению приветствуются через Issues.
 
 ### `rosdomofon.py`
 
