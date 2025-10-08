@@ -16,6 +16,7 @@
 - **Модели адресов**: `Address`, `Country`, `Street`, `House`, `Entrance`
 - **Модели сообщений**: `Message`, `MessagesResponse`, `SendMessageRequest`, `AbonentInfo`, `Pageable`, `Sort`
 - **Модели Kafka**: `KafkaIncomingMessage`, `KafkaOutgoingMessage`, `KafkaAbonentInfo`, `KafkaFromAbonent`, `LocalizedPush`
+- **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpApplication`
 
 **Особенности**:
 - Валидация номера телефона в формате 79131234567
@@ -49,6 +50,9 @@
     - `stop_kafka_consumer()` - остановка потребления сообщений
     - `send_kafka_message()` - отправка сообщения через Kafka
     - `send_kafka_message_to_multiple()` - групповая отправка через Kafka
+    - `set_signup_handler()` - установка обработчика событий регистрации
+    - `start_signup_consumer()` - запуск потребления событий регистрации
+    - `stop_signup_consumer()` - остановка потребления событий регистрации
 
 **Особенности**:
 - Подробные docstring с примерами использования для каждого метода
@@ -64,20 +68,38 @@
 **Содержит**:
 - **Класс RosDomofonKafkaClient** с методами:
   - `set_message_handler()` - установка обработчика входящих сообщений
-  - `start_consuming()` - запуск потребления в отдельном потоке
-  - `stop_consuming()` - остановка потребления
+  - `set_signup_handler()` - установка обработчика событий регистрации
+  - `start_consuming()` - запуск потребления сообщений в отдельном потоке
+  - `start_signup_consuming()` - запуск потребления регистраций в отдельном потоке
+  - `stop_consuming()` - остановка потребления сообщений
+  - `stop_signup_consuming()` - остановка потребления регистраций
   - `send_message()` - отправка сообщения одному абоненту
   - `send_message_to_multiple()` - отправка группового сообщения
   - `close()` - закрытие всех соединений
 
 **Особенности**:
 - Автоматическое формирование топиков по имени компании (`MESSAGES_IN_<company>`, `MESSAGES_OUT_<company>`)
-- Работа в отдельном потоке для неблокирующего потребления
-- Валидация сообщений через Pydantic модели
+- Поддержка топика регистраций `SIGN_UPS_ALL` (общий для всех компаний)
+- Работа в отдельных потоках для неблокирующего потребления сообщений и регистраций
+- Валидация данных через Pydantic модели
 - Контекстный менеджер для безопасного закрытия
 - Подробное логирование всех операций
-- **Поддержка SASL_SSL аутентификации** с механизмом SCRAM-SHA-256
+- **Поддержка SASL_SSL аутентификации** с механизмом SCRAM-SHA-512
 - **SSL сертификаты** для безопасного подключения к Kafka брокерам
+
+### `kafka_example.py`
+**Назначение**: Пример использования Kafka интеграции
+
+**Содержит**:
+- Обработчик входящих сообщений `handle_incoming_message()`
+- Обработчик событий регистрации `handle_signup()`
+- Демонстрация работы с обоими топиками одновременно
+- Примеры отправки сообщений через Kafka
+
+**Особенности**:
+- Полный цикл работы: подключение → обработка → отключение
+- Обработка KeyboardInterrupt для корректного завершения
+- Примеры отправки сообщений (закомментированы)
 
 ### `bitrixWork.py`
 **Назначение**: Модуль для работы с API Bitrix24
@@ -204,6 +226,7 @@ with RosDomofonAPI(username="user", password="pass") as api:
 3. Получить название топиков компании:
    - **Входящие сообщения**: `MESSAGES_IN_<company_short_name>`
    - **Исходящие сообщения**: `MESSAGES_OUT_<company_short_name>`
+   - **События регистрации**: `SIGN_UPS_ALL` (общий топик для всех компаний)
 
 ### Безопасность подключения
 Kafka клиент поддерживает:
@@ -245,8 +268,89 @@ Kafka клиент поддерживает:
 - **Получатели**: массив с ID и/или номерами телефонов абонентов
 - **Отправитель**: опциональная информация об отправителе
 
+#### События регистрации (SIGN_UPS_ALL)
+Топик содержит события регистрации новых абонентов в системе РосДомофон.
+
+```json
+{
+  "id": 12345,
+  "abonent": {
+    "id": 1574870,
+    "phone": 79308312222
+  },
+  "address": {
+    "city": "Москва",
+    "flat": 42,
+    "house": {
+      "block": null,
+      "building": "1",
+      "housing": null,
+      "number": "28"
+    },
+    "street": {
+      "codeFias": "abc123",
+      "codeKladr": "def456",
+      "name": "Державина"
+    }
+  },
+  "application": {
+    "id": 101,
+    "name": "РосДомофон Android",
+    "provider": "rosdomofon"
+  },
+  "timeZone": "Europe/Moscow",
+  "virtual": true,
+  "offerSigned": true,
+  "contractNumber": "DOG-2025-001"
+}
+```
+
+**Важные поля**:
+- `abonent.id` - ID абонента для отправки приветственных сообщений
+- `abonent.phone` - номер телефона
+- `address` - полный адрес регистрации
+- `application` - через какое приложение зарегистрировался
+- `virtual` - виртуальная трубка (true) или физическая (false)
+- `offerSigned` - подписана ли оферта
+
+### Обработка событий регистрации
+
+```python
+from rosdomofon import RosDomofonAPI
+from models import SignUpEvent
+
+# Инициализация с Kafka
+api = RosDomofonAPI(
+    username="user",
+    password="pass",
+    kafka_bootstrap_servers="kafka.rosdomofon.com:443",
+    company_short_name="asd_asd",
+    kafka_group_id="rosdomofon_group",
+    kafka_username="kafka_user",
+    kafka_password="kafka_pass",
+    kafka_ssl_ca_cert_path="kafka-ca.crt"
+)
+
+# Обработчик регистраций
+def handle_signup(signup: SignUpEvent):
+    print(f"Новая регистрация: {signup.abonent.phone}")
+    print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
+    
+    # Отправить приветственное сообщение
+    api.send_message_to_abonent(
+        signup.abonent.id,
+        'support',
+        'Добро пожаловать в систему РосДомофон!'
+    )
+
+# Установка и запуск
+api.set_signup_handler(handle_signup)
+api.start_signup_consumer()
+```
+
 ### Преимущества Kafka интеграции
-- **Real-time обработка** сообщений от абонентов
+- **Real-time обработка** сообщений от абонентов и событий регистрации
 - **Масштабируемость** - поддержка высокой нагрузки
 - **Надежность** - гарантированная доставка сообщений
-- **Гибкость** - возможность обработки сообщений несколькими сервисами
+- **Гибкость** - возможность обработки событий несколькими сервисами
+- **Автоматизация** - мгновенная реакция на регистрацию новых абонентов

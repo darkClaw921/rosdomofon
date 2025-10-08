@@ -8,7 +8,7 @@ from typing import Callable, Optional, Dict, Any
 from kafka import KafkaConsumer, KafkaProducer
 from loguru import logger
 
-from .models import KafkaIncomingMessage, KafkaOutgoingMessage, KafkaAbonentInfo, KafkaFromAbonent
+from .models import KafkaIncomingMessage, KafkaOutgoingMessage, KafkaAbonentInfo, KafkaFromAbonent, SignUpEvent
 
 
 class RosDomofonKafkaClient:
@@ -52,16 +52,22 @@ class RosDomofonKafkaClient:
         # Формирование названий топиков
         self.incoming_topic = f"MESSAGES_IN_{company_short_name}"
         self.outgoing_topic = f"MESSAGES_OUT_{company_short_name}"
+        self.signups_topic = "SIGN_UPS_ALL"
         
         self.consumer: Optional[KafkaConsumer] = None
+        self.signups_consumer: Optional[KafkaConsumer] = None
         self.producer: Optional[KafkaProducer] = None
         self._consumer_thread: Optional[threading.Thread] = None
+        self._signups_consumer_thread: Optional[threading.Thread] = None
         self._running = False
+        self._signups_running = False
         self._message_handler: Optional[Callable] = None
+        self._signup_handler: Optional[Callable] = None
         
         logger.info(f"Инициализация Kafka клиента для компании {company_short_name}")
         logger.info(f"Топик входящих сообщений: {self.incoming_topic}")
         logger.info(f"Топик исходящих сообщений: {self.outgoing_topic}")
+        logger.info(f"Топик регистраций: {self.signups_topic}")
         
         # Проверка доступных топиков
         self._check_available_topics()
@@ -164,6 +170,11 @@ class RosDomofonKafkaClient:
                 logger.info(f"✓ Топик {self.outgoing_topic} найден")
             else:
                 logger.warning(f"✗ Топик {self.outgoing_topic} не найден")
+            
+            if self.signups_topic in topics:
+                logger.info(f"✓ Топик {self.signups_topic} найден")
+            else:
+                logger.warning(f"✗ Топик {self.signups_topic} не найден")
                 
         except Exception as e:
             logger.error(f"Ошибка при получении списка топиков: {e}")
@@ -183,6 +194,23 @@ class RosDomofonKafkaClient:
         """
         self._message_handler = handler
         logger.info("Установлен обработчик входящих сообщений")
+    
+    def set_signup_handler(self, handler: Callable[[SignUpEvent], None]):
+        """
+        Установить обработчик событий регистрации
+        
+        Args:
+            handler (Callable): Функция для обработки событий регистрации
+            
+        Example:
+            >>> def handle_signup(signup: SignUpEvent):
+            ...     print(f"Новая регистрация абонента {signup.abonent.phone}")
+            ...     print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
+            >>> 
+            >>> kafka_client.set_signup_handler(handle_signup)
+        """
+        self._signup_handler = handler
+        logger.info("Установлен обработчик событий регистрации")
     
     def start_consuming(self):
         """
@@ -227,6 +255,83 @@ class RosDomofonKafkaClient:
             self._consumer_thread.join(timeout=5)
         
         logger.info("Остановлено потребление сообщений из Kafka")
+    
+    def start_signup_consuming(self):
+        """
+        Запустить потребление событий регистрации в отдельном потоке
+        
+        Example:
+            >>> kafka_client.start_signup_consuming()
+            >>> # События регистрации будут обрабатываться в фоне
+        """
+        if self._signups_running:
+            logger.warning("Потребление регистраций уже запущено")
+            return
+        
+        if not self._signup_handler:
+            raise ValueError("Необходимо установить обработчик регистраций через set_signup_handler()")
+        
+        self._signups_running = True
+        
+        # Создаем отдельный consumer для топика регистраций
+        config = {
+            'bootstrap_servers': self.bootstrap_servers,
+            'group_id': f"{self.group_id}_signups",
+            'auto_offset_reset': 'earliest',
+            'enable_auto_commit': True,
+            'value_deserializer': lambda x: json.loads(x.decode('utf-8')),
+            'consumer_timeout_ms': 1000,
+            'api_version': (0, 10, 0),
+            'request_timeout_ms': 30000,
+            'session_timeout_ms': 10000,
+            'heartbeat_interval_ms': 3000,
+        }
+        
+        if self.username and self.password:
+            config.update({
+                'security_protocol': 'SASL_SSL',
+                'sasl_mechanism': 'SCRAM-SHA-512',
+                'sasl_plain_username': self.username,
+                'sasl_plain_password': self.password,
+                'ssl_check_hostname': True,
+            })
+            
+            if self.ssl_ca_cert_path:
+                config['ssl_cafile'] = self.ssl_ca_cert_path
+            else:
+                config['ssl_check_hostname'] = False
+                import ssl
+                config['ssl_context'] = ssl.create_default_context()
+                config['ssl_context'].check_hostname = False
+                config['ssl_context'].verify_mode = ssl.CERT_NONE
+        
+        self.signups_consumer = KafkaConsumer(self.signups_topic, **config)
+        self._signups_consumer_thread = threading.Thread(target=self._consume_signups, daemon=True)
+        self._signups_consumer_thread.start()
+        
+        logger.info("Запущено потребление событий регистрации из Kafka")
+    
+    def stop_signup_consuming(self):
+        """
+        Остановить потребление событий регистрации
+        
+        Example:
+            >>> kafka_client.stop_signup_consuming()
+        """
+        if not self._signups_running:
+            logger.warning("Потребление регистраций не запущено")
+            return
+        
+        self._signups_running = False
+        
+        if self.signups_consumer:
+            self.signups_consumer.close()
+            self.signups_consumer = None
+        
+        if self._signups_consumer_thread and self._signups_consumer_thread.is_alive():
+            self._signups_consumer_thread.join(timeout=5)
+        
+        logger.info("Остановлено потребление событий регистрации из Kafka")
     
     def _consume_messages(self):
         """Внутренний метод для потребления сообщений"""
@@ -303,6 +408,84 @@ class RosDomofonKafkaClient:
             logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
             logger.info("Завершен поток потребления сообщений")
+    
+    def _consume_signups(self):
+        """Внутренний метод для потребления событий регистрации"""
+        logger.info(f"Начато прослушивание топика {self.signups_topic}")
+        logger.info(f"Consumer group ID: {self.group_id}_signups")
+        logger.info(f"Подписка на топик: {self.signups_consumer.subscription()}")
+        
+        partitions_assigned = False
+        
+        try:
+            while self._signups_running and self.signups_consumer:
+                try:
+                    message_pack = self.signups_consumer.poll(timeout_ms=1000)
+                    
+                    # Проверяем назначение партиций после первого poll
+                    if not partitions_assigned:
+                        assigned = self.signups_consumer.assignment()
+                        if assigned:
+                            logger.info(f"✓ Назначенные партиции для SIGN_UPS: {assigned}")
+                            for tp in assigned:
+                                position = self.signups_consumer.position(tp)
+                                logger.info(f"  Партиция {tp.partition}: текущая позиция = {position}")
+                            partitions_assigned = True
+                        else:
+                            logger.debug("Ожидание назначения партиций для SIGN_UPS...")
+                    
+                    if message_pack:
+                        logger.debug(f"Получен пакет событий регистрации: {len(message_pack)} партиций")
+                    
+                    for topic_partition, messages in message_pack.items():
+                        logger.debug(f"Обработка {len(messages)} событий регистрации из партиции {topic_partition.partition}")
+                        
+                        for message in messages:
+                            try:
+                                logger.debug(f"Сырые данные события регистрации: {message.value}")
+                                
+                                # Валидация и создание Pydantic модели
+                                signup_event = SignUpEvent(**message.value)
+                                
+                                logger.info(
+                                    f"📝 Новая регистрация абонента {signup_event.abonent.phone} "
+                                    f"(ID: {signup_event.abonent.id}) по адресу: "
+                                    f"{signup_event.address.city}, {signup_event.address.street.name}, "
+                                    f"д.{signup_event.address.house.number}, кв.{signup_event.address.flat}"
+                                )
+                                
+                                # Вызов обработчика
+                                if self._signup_handler:
+                                    logger.debug("Вызов обработчика событий регистрации...")
+                                    self._signup_handler(signup_event)
+                                    logger.debug("Обработчик выполнен")
+                                else:
+                                    logger.warning("Обработчик событий регистрации не установлен!")
+                                
+                            except Exception as e:
+                                logger.error(f"Ошибка обработки события регистрации: {e}")
+                                logger.error(f"Данные события: {message.value}")
+                                import traceback
+                                logger.error(f"Traceback: {traceback.format_exc()}")
+                    else:
+                        # Если нет событий, логируем раз в 10 секунд
+                        if not hasattr(self, '_last_no_signup_log') or time.time() - self._last_no_signup_log > 10:
+                            logger.debug(f"Ожидание событий регистрации из {self.signups_topic}...")
+                            self._last_no_signup_log = time.time()
+                                
+                except Exception as e:
+                    if self._signups_running:
+                        logger.error(f"Ошибка при получении событий регистрации: {e}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        time.sleep(1)
+                        
+        except Exception as e:
+            logger.error(f"Критическая ошибка в потоке потребления регистраций: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        finally:
+            logger.info("Завершен поток потребления событий регистрации")
     
     def send_message(self, 
                      to_abonent_id: int, 
@@ -462,6 +645,7 @@ class RosDomofonKafkaClient:
             >>> kafka_client.close()
         """
         self.stop_consuming()
+        self.stop_signup_consuming()
         
         if self.producer:
             self.producer.close()

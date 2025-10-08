@@ -3,7 +3,7 @@
 """
 import time
 from .rosdomofon import RosDomofonAPI
-from .models import KafkaIncomingMessage
+from .models import KafkaIncomingMessage, SignUpEvent
 from dotenv import load_dotenv
 import os
 load_dotenv()
@@ -40,6 +40,31 @@ def handle_incoming_message(message: KafkaIncomingMessage):
     # )
 
 
+def handle_signup(signup: SignUpEvent):
+    """
+    Обработчик событий регистрации из Kafka
+    
+    Args:
+        signup: Событие регистрации нового абонента
+    """
+    print(f"\n📝 Новая регистрация абонента:")
+    print(f"   ID: {signup.abonent.id}")
+    print(f"   Телефон: {signup.abonent.phone}")
+    print(f"   Адрес: {signup.address.city}, ул.{signup.address.street.name}")
+    print(f"   Дом: {signup.address.house.number}, кв.{signup.address.flat}")
+    print(f"   Приложение: {signup.application.name} ({signup.application.provider})")
+    print(f"   Виртуальная трубка: {signup.virtual}")
+    print(f"   Оферта подписана: {signup.offer_signed}")
+    print(f"   Номер договора: {signup.contract_number or 'не указан'}")
+    
+    # Пример отправки приветственного сообщения через REST API
+    # api.send_message_to_abonent(
+    #     signup.abonent.id,
+    #     'support',
+    #     'Добро пожаловать в систему РосДомофон!'
+    # )
+
+
 def main():
     """Основная функция примера"""
     
@@ -66,10 +91,19 @@ def main():
         print("📡 Настройка обработчика Kafka сообщений...")
         api.set_kafka_message_handler(handle_incoming_message)
         
+        # Установка обработчика регистраций
+        print("📡 Настройка обработчика регистраций...")
+        api.set_signup_handler(handle_signup)
+        
         # Запуск потребления сообщений
         print("🚀 Запуск Kafka consumer...")
         api.start_kafka_consumer()
         print("✅ Kafka consumer запущен! Ожидание сообщений...")
+        
+        # Запуск потребления регистраций
+        print("🚀 Запуск Kafka consumer для регистраций...")
+        api.start_signup_consumer()
+        print("✅ Kafka consumer регистраций запущен!")
         
         # Пример отправки сообщения через Kafka
         # print("\n📤 Отправка тестового сообщения через Kafka...")
@@ -118,6 +152,10 @@ def main():
         # Остановка Kafka consumer
         print("🛑 Остановка Kafka consumer...")
         api.stop_kafka_consumer()
+        
+        # Остановка Kafka consumer для регистраций
+        print("🛑 Остановка Kafka consumer регистраций...")
+        api.stop_signup_consumer()
         
         # Закрытие соединений
         print("🔒 Закрытие соединений...")

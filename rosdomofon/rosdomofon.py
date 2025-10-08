@@ -9,7 +9,7 @@ from .models import (
     AuthResponse, Account, CreateAccountRequest, CreateAccountResponse,
     CreateFlatRequest, CreateFlatResponse, Service, CreateConnectionRequest,
     CreateConnectionResponse, Connection, SendMessageRequest, MessagesResponse,
-    AbonentInfo, KafkaIncomingMessage
+    AbonentInfo, KafkaIncomingMessage, SignUpEvent
 )
 from .kafka_client import RosDomofonKafkaClient
 
@@ -312,7 +312,7 @@ class RosDomofonAPI:
         """
         Получить все услуги с портала РосДомофон
         """
-        url = f"{self.BASE_URL}/api/v1/services"
+        url = f"{self.BASE_URL}/abonents-service/api/v1/services"
         headers = self._get_headers()
         response = self._make_request("GET", url, headers=headers)
         services_data = response.json()
@@ -564,6 +564,60 @@ class RosDomofonAPI:
         self.kafka_client.stop_consuming()
         logger.info("Остановлен Kafka consumer")
     
+    def set_signup_handler(self, handler: callable):
+        """
+        Установить обработчик событий регистрации из Kafka
+        
+        Args:
+            handler (callable): Функция для обработки событий регистрации SignUpEvent
+            
+        Example:
+            >>> def handle_signup(signup: SignUpEvent):
+            ...     print(f"Новая регистрация абонента {signup.abonent.phone}")
+            ...     print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
+            ...     print(f"Квартира: {signup.address.flat}")
+            ...     # Отправить приветственное сообщение
+            ...     api.send_message_to_abonent(
+            ...         signup.abonent.id,
+            ...         'support',
+            ...         'Добро пожаловать в систему РосДомофон!'
+            ...     )
+            >>> 
+            >>> api.set_signup_handler(handle_signup)
+        """
+        if not self.kafka_client:
+            raise ValueError("Kafka клиент не инициализирован. Укажите kafka_bootstrap_servers и company_short_name при создании API")
+        
+        self.kafka_client.set_signup_handler(handler)
+        logger.info("Установлен обработчик событий регистрации")
+    
+    def start_signup_consumer(self):
+        """
+        Запустить потребление событий регистрации из Kafka
+        
+        Example:
+            >>> api.start_signup_consumer()
+            >>> # События регистрации будут обрабатываться в фоне
+        """
+        if not self.kafka_client:
+            raise ValueError("Kafka клиент не инициализирован")
+        
+        self.kafka_client.start_signup_consuming()
+        logger.info("Запущен Kafka consumer для событий регистрации")
+    
+    def stop_signup_consumer(self):
+        """
+        Остановить потребление событий регистрации из Kafka
+        
+        Example:
+            >>> api.stop_signup_consumer()
+        """
+        if not self.kafka_client:
+            raise ValueError("Kafka клиент не инициализирован")
+        
+        self.kafka_client.stop_signup_consuming()
+        logger.info("Остановлен Kafka consumer для событий регистрации")
+    
     def send_kafka_message(self, 
                           to_abonent_id: int, 
                           to_abonent_phone: int,
@@ -617,7 +671,7 @@ class RosDomofonAPI:
             
         Example:
             >>> recipients = [
-            ...     {"id": 1574870, "phone": 79308316689},
+            ...     {"id": 1574870, "phone": 79308312222},
             ...     {"id": 1480844, "phone": 79061343115}
             ... ]
             >>> success = api.send_kafka_message_to_multiple(recipients, "Групповое сообщение")

@@ -343,3 +343,58 @@ class KafkaOutgoingMessage(BaseModel):
     
     class Config:
         populate_by_name = True
+
+
+# Модели для SIGN_UPS_ALL топика
+class SignUpHouse(BaseModel):
+    """Информация о доме в событии регистрации"""
+    block: Optional[str] = None
+    building: Optional[str] = None
+    housing: Optional[str] = None
+    number: str
+
+
+class SignUpStreet(BaseModel):
+    """Информация об улице в событии регистрации"""
+    code_fias: Optional[str] = Field(None, alias="codeFias")
+    code_kladr: Optional[str] = Field(None, alias="codeKladr")
+    name: str
+    
+    class Config:
+        populate_by_name = True
+
+
+class SignUpAddress(BaseModel):
+    """Адрес в событии регистрации"""
+    city: str
+    flat: int
+    house: SignUpHouse
+    street: SignUpStreet
+
+
+class SignUpAbonent(BaseModel):
+    """Информация об абоненте в событии регистрации"""
+    id: int
+    phone: int
+
+
+class SignUpApplication(BaseModel):
+    """Информация о приложении через которое была регистрация"""
+    id: int
+    name: str
+    provider: str
+
+
+class SignUpEvent(BaseModel):
+    """Событие регистрации абонента (SIGN_UPS_ALL топик)"""
+    id: int
+    abonent: SignUpAbonent
+    address: SignUpAddress
+    application: SignUpApplication
+    time_zone: str = Field(alias="timeZone")
+    virtual: bool
+    offer_signed: bool = Field(alias="offerSigned")
+    contract_number: Optional[str] = Field(None, alias="contractNumber")
+    
+    class Config:
+        populate_by_name = True
