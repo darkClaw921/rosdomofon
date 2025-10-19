@@ -6,6 +6,7 @@ from .models import (
     SignUpAddress,
     SignUpHouse,
     SignUpStreet,
+    SignUpCountry,
     SignUpApplication
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     'SignUpAddress',
     'SignUpHouse',
     'SignUpStreet',
+    'SignUpCountry',
     'SignUpApplication'
 ]

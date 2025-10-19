@@ -16,7 +16,7 @@
 - **Модели адресов**: `Address`, `Country`, `Street`, `House`, `Entrance`
 - **Модели сообщений**: `Message`, `MessagesResponse`, `SendMessageRequest`, `AbonentInfo`, `Pageable`, `Sort`
 - **Модели Kafka**: `KafkaIncomingMessage`, `KafkaOutgoingMessage`, `KafkaAbonentInfo`, `KafkaFromAbonent`, `LocalizedPush`
-- **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpApplication`
+- **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpCountry`, `SignUpApplication`
 
 **Особенности**:
 - Валидация номера телефона в формате 79131234567
@@ -50,9 +50,12 @@
     - `stop_kafka_consumer()` - остановка потребления сообщений
     - `send_kafka_message()` - отправка сообщения через Kafka
     - `send_kafka_message_to_multiple()` - групповая отправка через Kafka
-    - `set_signup_handler()` - установка обработчика событий регистрации
-    - `start_signup_consumer()` - запуск потребления событий регистрации
-    - `stop_signup_consumer()` - остановка потребления событий регистрации
+    - `set_signup_handler()` - установка обработчика событий регистрации (общий топик SIGN_UPS_ALL)
+    - `start_signup_consumer()` - запуск потребления событий регистрации (общий топик)
+    - `stop_signup_consumer()` - остановка потребления событий регистрации (общий топик)
+    - `set_company_signup_handler()` - установка обработчика событий регистрации компании (топик SIGN_UPS_<company>)
+    - `start_company_signup_consumer()` - запуск потребления событий регистрации компании
+    - `stop_company_signup_consumer()` - остановка потребления событий регистрации компании
 
 **Особенности**:
 - Подробные docstring с примерами использования для каждого метода
@@ -68,11 +71,14 @@
 **Содержит**:
 - **Класс RosDomofonKafkaClient** с методами:
   - `set_message_handler()` - установка обработчика входящих сообщений
-  - `set_signup_handler()` - установка обработчика событий регистрации
+  - `set_signup_handler()` - установка обработчика событий регистрации (общий топик SIGN_UPS_ALL)
+  - `set_company_signup_handler()` - установка обработчика событий регистрации компании (топик SIGN_UPS_<company>)
   - `start_consuming()` - запуск потребления сообщений в отдельном потоке
-  - `start_signup_consuming()` - запуск потребления регистраций в отдельном потоке
+  - `start_signup_consuming()` - запуск потребления регистраций (общий топик) в отдельном потоке
+  - `start_company_signup_consuming()` - запуск потребления регистраций компании в отдельном потоке
   - `stop_consuming()` - остановка потребления сообщений
-  - `stop_signup_consuming()` - остановка потребления регистраций
+  - `stop_signup_consuming()` - остановка потребления регистраций (общий топик)
+  - `stop_company_signup_consuming()` - остановка потребления регистраций компании
   - `send_message()` - отправка сообщения одному абоненту
   - `send_message_to_multiple()` - отправка группового сообщения
   - `close()` - закрытие всех соединений
@@ -80,7 +86,9 @@
 **Особенности**:
 - Автоматическое формирование топиков по имени компании (`MESSAGES_IN_<company>`, `MESSAGES_OUT_<company>`)
 - Поддержка топика регистраций `SIGN_UPS_ALL` (общий для всех компаний)
+- Поддержка топика регистраций `SIGN_UPS_<company>` (специфичный для компании)
 - Работа в отдельных потоках для неблокирующего потребления сообщений и регистраций
+- **Использование одной consumer group** для всех топиков (авторизация на уровне группы)
 - Валидация данных через Pydantic модели
 - Контекстный менеджер для безопасного закрытия
 - Подробное логирование всех операций
@@ -92,14 +100,16 @@
 
 **Содержит**:
 - Обработчик входящих сообщений `handle_incoming_message()`
-- Обработчик событий регистрации `handle_signup()`
-- Демонстрация работы с обоими топиками одновременно
+- Обработчик событий регистрации (общий топик) `handle_signup()`
+- Обработчик событий регистрации компании `handle_company_signup()`
+- Демонстрация работы со всеми топиками одновременно
 - Примеры отправки сообщений через Kafka
 
 **Особенности**:
 - Полный цикл работы: подключение → обработка → отключение
 - Обработка KeyboardInterrupt для корректного завершения
 - Примеры отправки сообщений (закомментированы)
+- Демонстрация работы с двумя топиками регистраций одновременно
 
 ### `bitrixWork.py`
 **Назначение**: Модуль для работы с API Bitrix24
@@ -226,13 +236,23 @@ with RosDomofonAPI(username="user", password="pass") as api:
 3. Получить название топиков компании:
    - **Входящие сообщения**: `MESSAGES_IN_<company_short_name>`
    - **Исходящие сообщения**: `MESSAGES_OUT_<company_short_name>`
-   - **События регистрации**: `SIGN_UPS_ALL` (общий топик для всех компаний)
+   - **События регистрации (общий)**: `SIGN_UPS_ALL` (общий топик для всех компаний)
+   - **События регистрации (компании)**: `SIGN_UPS_<company_short_name>` (только регистрации в вашей компании)
+4. **Для использования топиков регистраций**: явно запросить у РосДомофон доступ к нужным топикам для вашей consumer group
 
 ### Безопасность подключения
 Kafka клиент поддерживает:
 - **SASL_SSL протокол** для шифрования трафика
 - **Механизм SCRAM-SHA-512** для аутентификации пользователей
 - **SSL сертификаты CA** для проверки подлинности сервера
+
+### Авторизация и группы потребителей
+**Важно**: В Kafka авторизация настраивается на уровне **consumer group**, а не на уровне топиков.
+
+- Все топики (`MESSAGES_IN_*`, `SIGN_UPS_ALL`, `SIGN_UPS_<company>`) используют **одну и ту же consumer group**
+- Это позволяет избежать ошибок авторизации `GroupAuthorizationFailedError`
+- Топики обрабатываются в **разных потоках**, но с единой группой
+- При настройке доступа в Kafka нужно запросить доступ ко всем необходимым топикам для одной группы
 
 ### Формат сообщений
 
@@ -271,49 +291,82 @@ Kafka клиент поддерживает:
 #### События регистрации (SIGN_UPS_ALL)
 Топик содержит события регистрации новых абонентов в системе РосДомофон.
 
+**Формат данных**:
 ```json
 {
-  "id": 12345,
+  "id": 566836,
   "abonent": {
-    "id": 1574870,
-    "phone": 79308312222
+
   },
   "address": {
-    "city": "Москва",
-    "flat": 42,
-    "house": {
-      "block": null,
-      "building": "1",
-      "housing": null,
-      "number": "28"
+    "country": {
+      "shortName": "RU",
+      "name": "Россия"
     },
+    "city": "Иваново",
     "street": {
-      "codeFias": "abc123",
-      "codeKladr": "def456",
-      "name": "Державина"
+      "id": 7037,
+      "name": "Ташкентская",
+      "codeKladr": "37000001000099700",
+      "codeFias": "44c5f004-32d5-4724-9ee2-099071e88d1c"
+    },
+    "house": {
+      "id": 65175,
+      "number": "100",
+      "block": "",
+      "building": "",
+      "housing": ""
     }
   },
   "application": {
-    "id": 101,
-    "name": "РосДомофон Android",
-    "provider": "rosdomofon"
+    "id": 1,
+    "name": "rd_android",
+    "provider": "google",
+    "companyId": 3
   },
-  "timeZone": "Europe/Moscow",
-  "virtual": true,
-  "offerSigned": true,
-  "contractNumber": "DOG-2025-001"
+  "virtual": false,
+  "timeZone": "Europe/Moscow +03:00",
+  "offerSigned": false,
+  "contractNumber": "",
+  "status": "UNPROCESSED",
+  "createdAt": 1690216032782,
+  "uid": "c7cba623-111c-4fe3-b952-1f5f9a1b7b37"
 }
 ```
 
 **Важные поля**:
 - `abonent.id` - ID абонента для отправки приветственных сообщений
 - `abonent.phone` - номер телефона
-- `address` - полный адрес регистрации
-- `application` - через какое приложение зарегистрировался
+- `address.country` - страна (shortName: RU/KZ, name: полное название)
+- `address.city` - город
+- `address.street` - улица с кодами ФИАС/КЛАДР или universalCode
+- `address.house` - номер дома с дополнительными полями (корпус, строение)
+- `application` - приложение через которое зарегистрировался (rd_android, rd_ios, orion_ios и т.д.)
 - `virtual` - виртуальная трубка (true) или физическая (false)
 - `offerSigned` - подписана ли оферта
+- `status` - статус регистрации (UNPROCESSED и др.)
+- `createdAt` - timestamp создания в миллисекундах
+- `uid` - уникальный идентификатор события
+
+**Обратите внимание**: Поле `flat` (квартира) отсутствует в событиях регистрации. Номер квартиры регистрируется позже отдельно.
+
+#### События регистрации компании (SIGN_UPS_<company>)
+Топик `SIGN_UPS_<company_short_name>` содержит события регистрации **только** для конкретной компании.
+
+**Формат данных**: Идентичен топику `SIGN_UPS_ALL`, но содержит только регистрации абонентов вашей компании.
+
+**Отличия от SIGN_UPS_ALL**:
+- `SIGN_UPS_ALL` - все регистрации во всех компаниях системы РосДомофон (требует явного запроса доступа)
+- `SIGN_UPS_<company>` - только регистрации в вашей компании (обычно доступен по умолчанию)
+
+**Когда использовать**:
+- Используйте `SIGN_UPS_<company>`, если вам нужны только регистрации в вашей компании
+- Используйте `SIGN_UPS_ALL`, если вы разрабатываете сервис для нескольких компаний
+- Можно подписаться на оба топика одновременно для разных целей обработки
 
 ### Обработка событий регистрации
+
+#### Пример 1: Обработка общих регистраций (SIGN_UPS_ALL)
 
 ```python
 from rosdomofon import RosDomofonAPI
@@ -331,21 +384,62 @@ api = RosDomofonAPI(
     kafka_ssl_ca_cert_path="kafka-ca.crt"
 )
 
-# Обработчик регистраций
+# Обработчик регистраций (общий топик)
 def handle_signup(signup: SignUpEvent):
-    print(f"Новая регистрация: {signup.abonent.phone}")
-    print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
+    print(f"[SIGN_UPS_ALL] Новая регистрация: {signup.abonent.phone}")
+    print(f"Страна: {signup.address.country.name}")
+    print(f"Адрес: {signup.address.city}, ул.{signup.address.street.name}, д.{signup.address.house.number}")
+    print(f"Приложение: {signup.application.name}")
+    print(f"Статус: {signup.status}")
+
+# Установка и запуск
+api.set_signup_handler(handle_signup)
+api.start_signup_consumer()
+```
+
+#### Пример 2: Обработка регистраций компании (SIGN_UPS_<company>)
+
+```python
+# Обработчик регистраций компании
+def handle_company_signup(signup: SignUpEvent):
+    print(f"[SIGN_UPS_<company>] Новая регистрация в нашей компании: {signup.abonent.phone}")
+    print(f"Адрес: {signup.address.city}, ул.{signup.address.street.name}, д.{signup.address.house.number}")
     
     # Отправить приветственное сообщение
     api.send_message_to_abonent(
         signup.abonent.id,
         'support',
-        'Добро пожаловать в систему РосДомофон!'
+        'Добро пожаловать в нашу компанию!'
     )
 
 # Установка и запуск
-api.set_signup_handler(handle_signup)
+api.set_company_signup_handler(handle_company_signup)
+api.start_company_signup_consumer()
+```
+
+#### Пример 3: Одновременная обработка обоих топиков
+
+```python
+# Обработка всех регистраций для аналитики
+def handle_all_signups(signup: SignUpEvent):
+    print(f"[Аналитика] Регистрация: {signup.abonent.phone}")
+    # Отправить данные в систему аналитики
+    analytics.track_signup(signup)
+
+# Обработка только регистраций компании для приветствия
+def handle_our_signups(signup: SignUpEvent):
+    print(f"[Приветствие] Наш новый клиент: {signup.abonent.phone}")
+    api.send_message_to_abonent(
+        signup.abonent.id,
+        'support',
+        'Добро пожаловать! Мы рады видеть вас в нашей компании!'
+    )
+
+# Запуск обоих обработчиков
+api.set_signup_handler(handle_all_signups)
+api.set_company_signup_handler(handle_our_signups)
 api.start_signup_consumer()
+api.start_company_signup_consumer()
 ```
 
 ### Преимущества Kafka интеграции

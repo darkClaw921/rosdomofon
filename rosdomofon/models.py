@@ -346,19 +346,31 @@ class KafkaOutgoingMessage(BaseModel):
 
 
 # Модели для SIGN_UPS_ALL топика
+class SignUpCountry(BaseModel):
+    """Информация о стране в событии регистрации"""
+    short_name: str = Field(alias="shortName")
+    name: str
+    
+    class Config:
+        populate_by_name = True
+
+
 class SignUpHouse(BaseModel):
     """Информация о доме в событии регистрации"""
+    id: int
+    number: str
     block: Optional[str] = None
     building: Optional[str] = None
     housing: Optional[str] = None
-    number: str
 
 
 class SignUpStreet(BaseModel):
     """Информация об улице в событии регистрации"""
+    id: int
+    name: str
     code_fias: Optional[str] = Field(None, alias="codeFias")
     code_kladr: Optional[str] = Field(None, alias="codeKladr")
-    name: str
+    universal_code: Optional[str] = Field(None, alias="universalCode")
     
     class Config:
         populate_by_name = True
@@ -366,10 +378,11 @@ class SignUpStreet(BaseModel):
 
 class SignUpAddress(BaseModel):
     """Адрес в событии регистрации"""
+    country: SignUpCountry
     city: str
-    flat: int
-    house: SignUpHouse
     street: SignUpStreet
+    house: SignUpHouse
+    flat: Optional[int] = None
 
 
 class SignUpAbonent(BaseModel):
@@ -383,6 +396,10 @@ class SignUpApplication(BaseModel):
     id: int
     name: str
     provider: str
+    company_id: Optional[int] = Field(None, alias="companyId")
+    
+    class Config:
+        populate_by_name = True
 
 
 class SignUpEvent(BaseModel):
@@ -395,6 +412,9 @@ class SignUpEvent(BaseModel):
     virtual: bool
     offer_signed: bool = Field(alias="offerSigned")
     contract_number: Optional[str] = Field(None, alias="contractNumber")
+    status: Optional[str] = None
+    created_at: Optional[int] = Field(None, alias="createdAt")
+    uid: Optional[str] = None
     
     class Config:
         populate_by_name = True

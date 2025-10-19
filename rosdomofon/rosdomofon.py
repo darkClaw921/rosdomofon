@@ -317,7 +317,8 @@ class RosDomofonAPI:
         response = self._make_request("GET", url, headers=headers)
         services_data = response.json()
         pprint(services_data)
-        return [Service(**service) for service in services_data]
+        # API возвращает объект с пагинацией, нужно взять content
+        return [Service(**service) for service in services_data.get('content', [])]
 
     def block_account(self, account_number: str) -> bool:
         """
@@ -617,6 +618,59 @@ class RosDomofonAPI:
         
         self.kafka_client.stop_signup_consuming()
         logger.info("Остановлен Kafka consumer для событий регистрации")
+    
+    def set_company_signup_handler(self, handler: callable):
+        """
+        Установить обработчик событий регистрации из топика компании SIGN_UPS_<company_short_name>
+        
+        Args:
+            handler (callable): Функция для обработки событий регистрации компании SignUpEvent
+            
+        Example:
+            >>> def handle_company_signup(signup: SignUpEvent):
+            ...     print(f"Новая регистрация компании: {signup.abonent.phone}")
+            ...     print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
+            ...     # Отправить приветственное сообщение
+            ...     api.send_message_to_abonent(
+            ...         signup.abonent.id,
+            ...         'support',
+            ...         'Добро пожаловать в нашу компанию!'
+            ...     )
+            >>> 
+            >>> api.set_company_signup_handler(handle_company_signup)
+        """
+        if not self.kafka_client:
+            raise ValueError("Kafka клиент не инициализирован. Укажите kafka_bootstrap_servers и company_short_name при создании API")
+        
+        self.kafka_client.set_company_signup_handler(handler)
+        logger.info("Установлен обработчик событий регистрации компании")
+    
+    def start_company_signup_consumer(self):
+        """
+        Запустить потребление событий регистрации компании из Kafka
+        
+        Example:
+            >>> api.start_company_signup_consumer()
+            >>> # События регистрации компании будут обрабатываться в фоне
+        """
+        if not self.kafka_client:
+            raise ValueError("Kafka клиент не инициализирован")
+        
+        self.kafka_client.start_company_signup_consuming()
+        logger.info("Запущен Kafka consumer для событий регистрации компании")
+    
+    def stop_company_signup_consumer(self):
+        """
+        Остановить потребление событий регистрации компании из Kafka
+        
+        Example:
+            >>> api.stop_company_signup_consumer()
+        """
+        if not self.kafka_client:
+            raise ValueError("Kafka клиент не инициализирован")
+        
+        self.kafka_client.stop_company_signup_consuming()
+        logger.info("Остановлен Kafka consumer для событий регистрации компании")
     
     def send_kafka_message(self, 
                           to_abonent_id: int, 

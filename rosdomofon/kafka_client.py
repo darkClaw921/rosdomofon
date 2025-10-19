@@ -53,21 +53,27 @@ class RosDomofonKafkaClient:
         self.incoming_topic = f"MESSAGES_IN_{company_short_name}"
         self.outgoing_topic = f"MESSAGES_OUT_{company_short_name}"
         self.signups_topic = "SIGN_UPS_ALL"
+        self.company_signups_topic = f"SIGN_UPS_{company_short_name}"
         
         self.consumer: Optional[KafkaConsumer] = None
         self.signups_consumer: Optional[KafkaConsumer] = None
+        self.company_signups_consumer: Optional[KafkaConsumer] = None
         self.producer: Optional[KafkaProducer] = None
         self._consumer_thread: Optional[threading.Thread] = None
         self._signups_consumer_thread: Optional[threading.Thread] = None
+        self._company_signups_consumer_thread: Optional[threading.Thread] = None
         self._running = False
         self._signups_running = False
+        self._company_signups_running = False
         self._message_handler: Optional[Callable] = None
         self._signup_handler: Optional[Callable] = None
+        self._company_signup_handler: Optional[Callable] = None
         
         logger.info(f"Инициализация Kafka клиента для компании {company_short_name}")
         logger.info(f"Топик входящих сообщений: {self.incoming_topic}")
         logger.info(f"Топик исходящих сообщений: {self.outgoing_topic}")
-        logger.info(f"Топик регистраций: {self.signups_topic}")
+        logger.info(f"Топик регистраций (общий): {self.signups_topic}")
+        logger.info(f"Топик регистраций (компании): {self.company_signups_topic}")
         
         # Проверка доступных топиков
         self._check_available_topics()
@@ -175,6 +181,11 @@ class RosDomofonKafkaClient:
                 logger.info(f"✓ Топик {self.signups_topic} найден")
             else:
                 logger.warning(f"✗ Топик {self.signups_topic} не найден")
+            
+            if self.company_signups_topic in topics:
+                logger.info(f"✓ Топик {self.company_signups_topic} найден")
+            else:
+                logger.warning(f"✗ Топик {self.company_signups_topic} не найден")
                 
         except Exception as e:
             logger.error(f"Ошибка при получении списка топиков: {e}")
@@ -197,7 +208,7 @@ class RosDomofonKafkaClient:
     
     def set_signup_handler(self, handler: Callable[[SignUpEvent], None]):
         """
-        Установить обработчик событий регистрации
+        Установить обработчик событий регистрации из общего топика SIGN_UPS_ALL
         
         Args:
             handler (Callable): Функция для обработки событий регистрации
@@ -210,7 +221,24 @@ class RosDomofonKafkaClient:
             >>> kafka_client.set_signup_handler(handle_signup)
         """
         self._signup_handler = handler
-        logger.info("Установлен обработчик событий регистрации")
+        logger.info("Установлен обработчик событий регистрации (общий топик)")
+    
+    def set_company_signup_handler(self, handler: Callable[[SignUpEvent], None]):
+        """
+        Установить обработчик событий регистрации из топика компании SIGN_UPS_<company_short_name>
+        
+        Args:
+            handler (Callable): Функция для обработки событий регистрации компании
+            
+        Example:
+            >>> def handle_company_signup(signup: SignUpEvent):
+            ...     print(f"Новая регистрация компании: {signup.abonent.phone}")
+            ...     print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
+            >>> 
+            >>> kafka_client.set_company_signup_handler(handle_company_signup)
+        """
+        self._company_signup_handler = handler
+        logger.info("Установлен обработчик событий регистрации (топик компании)")
     
     def start_consuming(self):
         """
@@ -274,9 +302,10 @@ class RosDomofonKafkaClient:
         self._signups_running = True
         
         # Создаем отдельный consumer для топика регистраций
+        # Используем ту же группу, что и для сообщений - авторизация дается на группу, а не на топик
         config = {
             'bootstrap_servers': self.bootstrap_servers,
-            'group_id': f"{self.group_id}_signups",
+            'group_id': self.group_id,
             'auto_offset_reset': 'earliest',
             'enable_auto_commit': True,
             'value_deserializer': lambda x: json.loads(x.decode('utf-8')),
@@ -332,6 +361,83 @@ class RosDomofonKafkaClient:
             self._signups_consumer_thread.join(timeout=5)
         
         logger.info("Остановлено потребление событий регистрации из Kafka")
+    
+    def start_company_signup_consuming(self):
+        """
+        Запустить потребление событий регистрации компании в отдельном потоке
+        
+        Example:
+            >>> kafka_client.start_company_signup_consuming()
+            >>> # События регистрации компании будут обрабатываться в фоне
+        """
+        if self._company_signups_running:
+            logger.warning("Потребление регистраций компании уже запущено")
+            return
+        
+        if not self._company_signup_handler:
+            raise ValueError("Необходимо установить обработчик регистраций компании через set_company_signup_handler()")
+        
+        self._company_signups_running = True
+        
+        # Создаем отдельный consumer для топика регистраций компании
+        config = {
+            'bootstrap_servers': self.bootstrap_servers,
+            'group_id': self.group_id,
+            'auto_offset_reset': 'earliest',
+            'enable_auto_commit': True,
+            'value_deserializer': lambda x: json.loads(x.decode('utf-8')),
+            'consumer_timeout_ms': 1000,
+            'api_version': (0, 10, 0),
+            'request_timeout_ms': 30000,
+            'session_timeout_ms': 10000,
+            'heartbeat_interval_ms': 3000,
+        }
+        
+        if self.username and self.password:
+            config.update({
+                'security_protocol': 'SASL_SSL',
+                'sasl_mechanism': 'SCRAM-SHA-512',
+                'sasl_plain_username': self.username,
+                'sasl_plain_password': self.password,
+                'ssl_check_hostname': True,
+            })
+            
+            if self.ssl_ca_cert_path:
+                config['ssl_cafile'] = self.ssl_ca_cert_path
+            else:
+                config['ssl_check_hostname'] = False
+                import ssl
+                config['ssl_context'] = ssl.create_default_context()
+                config['ssl_context'].check_hostname = False
+                config['ssl_context'].verify_mode = ssl.CERT_NONE
+        
+        self.company_signups_consumer = KafkaConsumer(self.company_signups_topic, **config)
+        self._company_signups_consumer_thread = threading.Thread(target=self._consume_company_signups, daemon=True)
+        self._company_signups_consumer_thread.start()
+        
+        logger.info("Запущено потребление событий регистрации компании из Kafka")
+    
+    def stop_company_signup_consuming(self):
+        """
+        Остановить потребление событий регистрации компании
+        
+        Example:
+            >>> kafka_client.stop_company_signup_consuming()
+        """
+        if not self._company_signups_running:
+            logger.warning("Потребление регистраций компании не запущено")
+            return
+        
+        self._company_signups_running = False
+        
+        if self.company_signups_consumer:
+            self.company_signups_consumer.close()
+            self.company_signups_consumer = None
+        
+        if self._company_signups_consumer_thread and self._company_signups_consumer_thread.is_alive():
+            self._company_signups_consumer_thread.join(timeout=5)
+        
+        logger.info("Остановлено потребление событий регистрации компании из Kafka")
     
     def _consume_messages(self):
         """Внутренний метод для потребления сообщений"""
@@ -412,7 +518,7 @@ class RosDomofonKafkaClient:
     def _consume_signups(self):
         """Внутренний метод для потребления событий регистрации"""
         logger.info(f"Начато прослушивание топика {self.signups_topic}")
-        logger.info(f"Consumer group ID: {self.group_id}_signups")
+        logger.info(f"Consumer group ID: {self.group_id}")
         logger.info(f"Подписка на топик: {self.signups_consumer.subscription()}")
         
         partitions_assigned = False
@@ -450,8 +556,8 @@ class RosDomofonKafkaClient:
                                 logger.info(
                                     f"📝 Новая регистрация абонента {signup_event.abonent.phone} "
                                     f"(ID: {signup_event.abonent.id}) по адресу: "
-                                    f"{signup_event.address.city}, {signup_event.address.street.name}, "
-                                    f"д.{signup_event.address.house.number}, кв.{signup_event.address.flat}"
+                                    f"{signup_event.address.country.name}, {signup_event.address.city}, "
+                                    f"ул.{signup_event.address.street.name}, д.{signup_event.address.house.number}"
                                 )
                                 
                                 # Вызов обработчика
@@ -486,6 +592,84 @@ class RosDomofonKafkaClient:
             logger.error(f"Traceback: {traceback.format_exc()}")
         finally:
             logger.info("Завершен поток потребления событий регистрации")
+    
+    def _consume_company_signups(self):
+        """Внутренний метод для потребления событий регистрации компании"""
+        logger.info(f"Начато прослушивание топика {self.company_signups_topic}")
+        logger.info(f"Consumer group ID: {self.group_id}")
+        logger.info(f"Подписка на топик: {self.company_signups_consumer.subscription()}")
+        
+        partitions_assigned = False
+        
+        try:
+            while self._company_signups_running and self.company_signups_consumer:
+                try:
+                    message_pack = self.company_signups_consumer.poll(timeout_ms=1000)
+                    
+                    # Проверяем назначение партиций после первого poll
+                    if not partitions_assigned:
+                        assigned = self.company_signups_consumer.assignment()
+                        if assigned:
+                            logger.info(f"✓ Назначенные партиции для {self.company_signups_topic}: {assigned}")
+                            for tp in assigned:
+                                position = self.company_signups_consumer.position(tp)
+                                logger.info(f"  Партиция {tp.partition}: текущая позиция = {position}")
+                            partitions_assigned = True
+                        else:
+                            logger.debug(f"Ожидание назначения партиций для {self.company_signups_topic}...")
+                    
+                    if message_pack:
+                        logger.debug(f"Получен пакет событий регистрации компании: {len(message_pack)} партиций")
+                    
+                    for topic_partition, messages in message_pack.items():
+                        logger.debug(f"Обработка {len(messages)} событий регистрации компании из партиции {topic_partition.partition}")
+                        
+                        for message in messages:
+                            try:
+                                logger.debug(f"Сырые данные события регистрации компании: {message.value}")
+                                
+                                # Валидация и создание Pydantic модели
+                                signup_event = SignUpEvent(**message.value)
+                                
+                                logger.info(
+                                    f"📝 [Компания] Новая регистрация абонента {signup_event.abonent.phone} "
+                                    f"(ID: {signup_event.abonent.id}) по адресу: "
+                                    f"{signup_event.address.country.name}, {signup_event.address.city}, "
+                                    f"ул.{signup_event.address.street.name}, д.{signup_event.address.house.number}"
+                                )
+                                
+                                # Вызов обработчика
+                                if self._company_signup_handler:
+                                    logger.debug("Вызов обработчика событий регистрации компании...")
+                                    self._company_signup_handler(signup_event)
+                                    logger.debug("Обработчик выполнен")
+                                else:
+                                    logger.warning("Обработчик событий регистрации компании не установлен!")
+                                
+                            except Exception as e:
+                                logger.error(f"Ошибка обработки события регистрации компании: {e}")
+                                logger.error(f"Данные события: {message.value}")
+                                import traceback
+                                logger.error(f"Traceback: {traceback.format_exc()}")
+                    else:
+                        # Если нет событий, логируем раз в 10 секунд
+                        if not hasattr(self, '_last_no_company_signup_log') or time.time() - self._last_no_company_signup_log > 10:
+                            logger.debug(f"Ожидание событий регистрации из {self.company_signups_topic}...")
+                            self._last_no_company_signup_log = time.time()
+                                
+                except Exception as e:
+                    if self._company_signups_running:
+                        logger.error(f"Ошибка при получении событий регистрации компании: {e}")
+                        import traceback
+                        logger.error(f"Traceback: {traceback.format_exc()}")
+                        time.sleep(1)
+                        
+        except Exception as e:
+            logger.error(f"Критическая ошибка в потоке потребления регистраций компании: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+        finally:
+            logger.info("Завершен поток потребления событий регистрации компании")
     
     def send_message(self, 
                      to_abonent_id: int, 
@@ -646,6 +830,7 @@ class RosDomofonKafkaClient:
         """
         self.stop_consuming()
         self.stop_signup_consuming()
+        self.stop_company_signup_consuming()
         
         if self.producer:
             self.producer.close()
