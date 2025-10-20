@@ -9,7 +9,8 @@ from .models import (
     AuthResponse, Account, CreateAccountRequest, CreateAccountResponse,
     CreateFlatRequest, CreateFlatResponse, Service, CreateConnectionRequest,
     CreateConnectionResponse, Connection, SendMessageRequest, MessagesResponse,
-    AbonentInfo, KafkaIncomingMessage, SignUpEvent
+    AbonentInfo, KafkaIncomingMessage, SignUpEvent, AccountInfo, EntrancesResponse,
+    AbonentFlat
 )
 from .kafka_client import RosDomofonKafkaClient
 
@@ -123,7 +124,34 @@ class RosDomofonAPI:
         accounts_data = response.json()
         # pprint(accounts_data)
         return [Account(**account) for account in accounts_data]
-    
+
+    def get_account_info(self, account_id: int) -> AccountInfo:
+        """
+        Получить детальную информацию об аккаунте (баланс, подключения, квартиры и т.д.)
+        
+        Args:
+            account_id (int): ID аккаунта
+            
+        Returns:
+            AccountInfo: Объект с детальной информацией об аккаунте
+            
+        Example:
+            >>> account_info = api.get_account_info(904154)
+            >>> print(account_info.balance.balance)
+            1500.50
+            >>> print(account_info.owner.phone)
+            79061343115
+            >>> print(account_info.company.name)
+            'ООО "Домофон Сервис"'
+            >>> for connection in account_info.connections:
+            ...     print(f"Услуга: {connection.service.name}, Тариф: {connection.tariff}")
+        """
+        url = f"{self.BASE_URL}/abonents-service/api/v1/accounts/{account_id}"
+        headers = self._get_headers()
+        
+        logger.info(f"Получение информации об аккаунте {account_id}")
+        response = self._make_request("GET", url, headers=headers)
+        return AccountInfo(**response.json())
 
     def get_account_by_phone(self, phone: int) -> Optional[Account]:
         """
@@ -186,12 +214,20 @@ class RosDomofonAPI:
             virtual (bool): True если физическая трубка не установлена
             
         Returns:
-            CreateFlatResponse: Объект с ID созданной квартиры
+            CreateFlatResponse: Полный объект квартиры с ID, адресом, владельцем и флагом виртуальности
             
         Example:
-            >>> response = api.create_flat("entrance_123", "42", abonent_id=1480844)
-            >>> print(response.id)
-            'flat_456'
+            >>> flat = api.create_flat("26959", "1", abonent_id=1574870)
+            >>> print(flat.id)
+            842554
+            >>> print(flat.address.city)
+            Чебоксары
+            >>> print(flat.address.street.name)
+            Филиппа Лукина
+            >>> print(flat.owner.id)
+            1574870
+            >>> print(flat.virtual)
+            False
         """
         url = f"{self.BASE_URL}/abonents-service/api/v1/flats"
         headers = self._get_headers()
@@ -234,20 +270,21 @@ class RosDomofonAPI:
         services_data = response.json()
         return [Service(**service) for service in services_data]
     
-    def connect_service(self, service_id: int, flat_id: str, account_id: Optional[int] = None) -> CreateConnectionResponse:
+    def connect_service(self, service_id: int, flat_id: int | str, account_id: Optional[int] = None) -> CreateConnectionResponse:
         """
         Подключить услугу к квартире
         
         Args:
             service_id (int): ID услуги (получается из get_entrance_services)
-            flat_id (str): ID квартиры (получается из create_flat)
+            flat_id (int | str): ID квартиры (получается из create_flat), принимает как int так и str
             account_id (Optional[int]): ID аккаунта (если известен номер телефона)
             
         Returns:
             CreateConnectionResponse: Объект с ID подключения
             
         Example:
-            >>> response = api.connect_service(12345, "flat_456", account_id=904154)
+            >>> flat = api.create_flat("26959", "42", abonent_id=1480844)
+            >>> response = api.connect_service(12345, flat.id, account_id=904154)
             >>> print(response.id)
             789
         """
@@ -308,6 +345,31 @@ class RosDomofonAPI:
         connections_data = response.json()
         return [Connection(**connection) for connection in connections_data]
 
+    def get_abonent_flats(self, abonent_id: int) -> List[AbonentFlat]:
+        """
+        Получить все квартиры абонента
+        
+        Args:
+            abonent_id (int): ID абонента
+            
+        Returns:
+            List[AbonentFlat]: Список квартир с адресами
+            
+        Example:
+            >>> flats = api.get_abonent_flats(1574870)
+            >>> for flat in flats:
+            ...     print(f"Квартира {flat.address.flat}, подъезд {flat.address.entrance.number}")
+            ...     print(f"Адрес: {flat.address.city}, {flat.address.street.name} {flat.address.house.number}")
+            ...     print(f"Виртуальная: {flat.virtual}")
+        """
+        url = f"{self.BASE_URL}/abonents-service/api/v1/abonents/{abonent_id}/flats"
+        headers = self._get_headers()
+        
+        logger.info(f"Получение квартир абонента {abonent_id}")
+        response = self._make_request("GET", url, headers=headers)
+        flats_data = response.json()
+        return [AbonentFlat(**flat) for flat in flats_data]
+
     def get_all_services(self) -> List[Service]:
         """
         Получить все услуги с портала РосДомофон
@@ -319,6 +381,44 @@ class RosDomofonAPI:
         pprint(services_data)
         # API возвращает объект с пагинацией, нужно взять content
         return [Service(**service) for service in services_data.get('content', [])]
+    
+    def get_entrances(self, address: Optional[str] = None, page: int = 0, size: int = 20) -> EntrancesResponse:
+        """
+        Получить список подъездов с услугами компании
+        
+        Args:
+            address (Optional[str]): Строка адреса для фильтрации подъездов
+            page (int): Номер страницы результатов (начиная с 0)
+            size (int): Количество записей на странице
+            
+        Returns:
+            EntrancesResponse: Пагинированный ответ со списком подъездов и их услугами
+            
+        Example:
+            >>> # Получить все подъезды
+            >>> entrances = api.get_entrances()
+            >>> print(entrances.total_elements)
+            25
+            >>> 
+            >>> # Поиск подъездов по адресу
+            >>> entrances = api.get_entrances(address="Москва, Ленина", page=0, size=10)
+            >>> for entrance in entrances.content:
+            ...     print(f"Подъезд {entrance.id}: {entrance.address_string}")
+            ...     for service in entrance.services:
+            ...         print(f"  - Услуга: {service.name} ({service.type})")
+            ...         print(f"    Камеры: {len(service.cameras)}")
+            ...         print(f"    RDA устройства: {len(service.rdas)}")
+        """
+        url = f"{self.BASE_URL}/abonents-service/api/v1/entrances"
+        headers = self._get_headers()
+        
+        params = {"page": page, "size": size}
+        if address:
+            params["address"] = address
+        
+        logger.info(f"Получение списка подъездов (страница {page}, размер {size})")
+        response = self._make_request("GET", url, headers=headers, params=params)
+        return EntrancesResponse(**response.json())
 
     def block_account(self, account_number: str) -> bool:
         """

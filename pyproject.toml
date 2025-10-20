@@ -1,6 +1,6 @@
 [project]
 name = "rosdomofon"
-version = "0.1.5"
+version = "0.1.6"
 description = "ORM для работы с API РосДомофон"
 readme = "README.md"
 requires-python = ">=3.12"

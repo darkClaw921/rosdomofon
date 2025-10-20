@@ -7,7 +7,17 @@ from .models import (
     SignUpHouse,
     SignUpStreet,
     SignUpCountry,
-    SignUpApplication
+    SignUpApplication,
+    AccountInfo,
+    EntrancesResponse,
+    EntranceWithServices,
+    ServiceWithFullDetails,
+    Camera,
+    RDA,
+    Intercom,
+    Location,
+    AbonentFlat,
+    FlatOwner
 )
 
 __all__ = [
@@ -19,5 +29,15 @@ __all__ = [
     'SignUpHouse',
     'SignUpStreet',
     'SignUpCountry',
-    'SignUpApplication'
+    'SignUpApplication',
+    'AccountInfo',
+    'EntrancesResponse',
+    'EntranceWithServices',
+    'ServiceWithFullDetails',
+    'Camera',
+    'RDA',
+    'Intercom',
+    'Location',
+    'AbonentFlat',
+    'FlatOwner'
 ]

@@ -4,6 +4,8 @@
 import json
 import threading
 import time
+import inspect
+import asyncio
 from typing import Callable, Optional, Dict, Any
 from kafka import KafkaConsumer, KafkaProducer
 from loguru import logger
@@ -77,6 +79,31 @@ class RosDomofonKafkaClient:
         
         # Проверка доступных топиков
         self._check_available_topics()
+    
+    def _call_handler(self, handler: Callable, data: Any):
+        """
+        Универсальный вызов обработчика (синхронного или асинхронного)
+        
+        Args:
+            handler: Функция-обработчик (sync или async)
+            data: Данные для передачи в обработчик
+        """
+        if inspect.iscoroutinefunction(handler):
+            # Асинхронный обработчик - запускаем через asyncio.run()
+            try:
+                asyncio.run(handler(data))
+            except Exception as e:
+                logger.error(f"Ошибка выполнения асинхронного обработчика: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+        else:
+            # Синхронный обработчик - вызываем напрямую
+            try:
+                handler(data)
+            except Exception as e:
+                logger.error(f"Ошибка выполнения синхронного обработчика: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
     
     def _create_consumer(self) -> KafkaConsumer:
         """Создать Kafka consumer"""
@@ -192,53 +219,80 @@ class RosDomofonKafkaClient:
     
     def set_message_handler(self, handler: Callable[[KafkaIncomingMessage], None]):
         """
-        Установить обработчик входящих сообщений
+        Установить обработчик входящих сообщений (синхронный или асинхронный)
         
         Args:
-            handler (Callable): Функция для обработки входящих сообщений
+            handler (Callable): Функция для обработки входящих сообщений (sync или async)
             
         Example:
+            >>> # Синхронный обработчик
             >>> def handle_message(message: KafkaIncomingMessage):
             ...     print(f"Получено сообщение от {message.from_abonent.phone}: {message.message}")
             >>> 
+            >>> # Асинхронный обработчик
+            >>> async def handle_message_async(message: KafkaIncomingMessage):
+            ...     await some_async_operation()
+            ...     print(f"Получено сообщение от {message.from_abonent.phone}: {message.message}")
+            >>> 
             >>> kafka_client.set_message_handler(handle_message)
+            >>> # или
+            >>> kafka_client.set_message_handler(handle_message_async)
         """
         self._message_handler = handler
-        logger.info("Установлен обработчик входящих сообщений")
+        handler_type = "асинхронный" if inspect.iscoroutinefunction(handler) else "синхронный"
+        logger.info(f"Установлен {handler_type} обработчик входящих сообщений")
     
     def set_signup_handler(self, handler: Callable[[SignUpEvent], None]):
         """
-        Установить обработчик событий регистрации из общего топика SIGN_UPS_ALL
+        Установить обработчик событий регистрации из общего топика SIGN_UPS_ALL (синхронный или асинхронный)
         
         Args:
-            handler (Callable): Функция для обработки событий регистрации
+            handler (Callable): Функция для обработки событий регистрации (sync или async)
             
         Example:
+            >>> # Синхронный обработчик
             >>> def handle_signup(signup: SignUpEvent):
             ...     print(f"Новая регистрация абонента {signup.abonent.phone}")
             ...     print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
             >>> 
+            >>> # Асинхронный обработчик
+            >>> async def handle_signup_async(signup: SignUpEvent):
+            ...     await db.save_signup(signup)
+            ...     print(f"Новая регистрация абонента {signup.abonent.phone}")
+            >>> 
             >>> kafka_client.set_signup_handler(handle_signup)
+            >>> # или
+            >>> kafka_client.set_signup_handler(handle_signup_async)
         """
         self._signup_handler = handler
-        logger.info("Установлен обработчик событий регистрации (общий топик)")
+        handler_type = "асинхронный" if inspect.iscoroutinefunction(handler) else "синхронный"
+        logger.info(f"Установлен {handler_type} обработчик событий регистрации (общий топик)")
     
     def set_company_signup_handler(self, handler: Callable[[SignUpEvent], None]):
         """
-        Установить обработчик событий регистрации из топика компании SIGN_UPS_<company_short_name>
+        Установить обработчик событий регистрации из топика компании SIGN_UPS_<company_short_name> (синхронный или асинхронный)
         
         Args:
-            handler (Callable): Функция для обработки событий регистрации компании
+            handler (Callable): Функция для обработки событий регистрации компании (sync или async)
             
         Example:
+            >>> # Синхронный обработчик
             >>> def handle_company_signup(signup: SignUpEvent):
             ...     print(f"Новая регистрация компании: {signup.abonent.phone}")
             ...     print(f"Адрес: {signup.address.city}, {signup.address.street.name}")
             >>> 
+            >>> # Асинхронный обработчик
+            >>> async def handle_company_signup_async(signup: SignUpEvent):
+            ...     await send_welcome_message(signup.abonent.id)
+            ...     print(f"Новая регистрация компании: {signup.abonent.phone}")
+            >>> 
             >>> kafka_client.set_company_signup_handler(handle_company_signup)
+            >>> # или
+            >>> kafka_client.set_company_signup_handler(handle_company_signup_async)
         """
         self._company_signup_handler = handler
-        logger.info("Установлен обработчик событий регистрации (топик компании)")
+        handler_type = "асинхронный" if inspect.iscoroutinefunction(handler) else "синхронный"
+        logger.info(f"Установлен {handler_type} обработчик событий регистрации (топик компании)")
     
     def start_consuming(self):
         """
@@ -485,7 +539,7 @@ class RosDomofonKafkaClient:
                                 # Вызов обработчика
                                 if self._message_handler:
                                     logger.debug("Вызов обработчика сообщений...")
-                                    self._message_handler(kafka_message)
+                                    self._call_handler(self._message_handler, kafka_message)
                                     logger.debug("Обработчик выполнен")
                                 else:
                                     logger.warning("Обработчик сообщений не установлен!")
@@ -563,7 +617,7 @@ class RosDomofonKafkaClient:
                                 # Вызов обработчика
                                 if self._signup_handler:
                                     logger.debug("Вызов обработчика событий регистрации...")
-                                    self._signup_handler(signup_event)
+                                    self._call_handler(self._signup_handler, signup_event)
                                     logger.debug("Обработчик выполнен")
                                 else:
                                     logger.warning("Обработчик событий регистрации не установлен!")
@@ -641,7 +695,7 @@ class RosDomofonKafkaClient:
                                 # Вызов обработчика
                                 if self._company_signup_handler:
                                     logger.debug("Вызов обработчика событий регистрации компании...")
-                                    self._company_signup_handler(signup_event)
+                                    self._call_handler(self._company_signup_handler, signup_event)
                                     logger.debug("Обработчик выполнен")
                                 else:
                                     logger.warning("Обработчик событий регистрации компании не установлен!")

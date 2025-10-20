@@ -55,6 +55,13 @@ class CreateAccountRequest(BaseModel):
     number: str
     phone: str
     
+    @validator('number', 'phone', pre=True)
+    def convert_to_string(cls, v):
+        """Преобразование int → str для совместимости с моделями, где phone как int"""
+        if isinstance(v, int):
+            return str(v)
+        return v
+    
     @validator('phone')
     def validate_phone(cls, v):
         """Валидация телефона - должен быть в формате 79131234567"""
@@ -77,13 +84,23 @@ class CreateFlatRequest(BaseModel):
     flat_number: str = Field(alias="flatNumber")
     virtual: bool = False
     
+    @validator('entrance_id', 'flat_number', pre=True)
+    def convert_to_string(cls, v):
+        """Преобразование int → str для совместимости"""
+        if isinstance(v, int):
+            return str(v)
+        return v
+    
     class Config:
         populate_by_name = True
 
 
 class CreateFlatResponse(BaseModel):
-    """Ответ при создании квартиры"""
-    id: str
+    """Ответ при создании квартиры - полный объект с адресом и владельцем"""
+    id: int
+    address: 'Address'
+    owner: 'FlatOwner'
+    virtual: bool
 
 
 # Модели для услуг
@@ -96,8 +113,13 @@ class Service(BaseModel):
 
 class CreateConnectionRequest(BaseModel):
     """Запрос на подключение услуги"""
-    flat_id: str = Field(alias="flatId")
+    flat_id: int | str = Field(alias="flatId")
     account_id: Optional[int] = Field(None, alias="accountId")
+    
+    @validator('flat_id', pre=True)
+    def convert_flat_id_to_str(cls, v):
+        """Преобразование flat_id в строку для API"""
+        return str(v)
     
     class Config:
         populate_by_name = True
@@ -415,6 +437,365 @@ class SignUpEvent(BaseModel):
     status: Optional[str] = None
     created_at: Optional[int] = Field(None, alias="createdAt")
     uid: Optional[str] = None
+    services: Optional[List[ServiceInfo]] = Field(None, alias="services")
     
     class Config:
         populate_by_name = True
+
+
+# Модели для детальной информации об аккаунте
+class Balance(BaseModel):
+    """Информация о балансе аккаунта"""
+    account_id: int = Field(alias="accountId")
+    balance: float
+    balance_date: int = Field(alias="balanceDate")
+    currency: str
+    is_payment_available: bool = Field(alias="isPaymentAvailable")
+    recommended_payment_date: Optional[int] = Field(None, alias="recommendedPaymentDate")
+    recommended_payment_sum: Optional[float] = Field(None, alias="recommendedPaymentSum")
+    show_banner: bool = Field(alias="showBanner")
+    
+    class Config:
+        populate_by_name = True
+
+
+class Invoice(BaseModel):
+    """Информация о счете"""
+    amount: float
+    currency: str
+    date_begin: str = Field(alias="dateBegin")
+    reminder_needed: bool = Field(alias="reminderNeeded")
+    uid: str
+    
+    class Config:
+        populate_by_name = True
+
+
+class RecurringPayment(BaseModel):
+    """Информация о рекуррентном платеже"""
+    amount: float
+    currency: str
+    date: int
+    reason: Optional[str] = None
+    status: str  # NEW, PENDING, SUCCESS, FAILED
+    
+    class Config:
+        populate_by_name = True
+
+
+class Delegation(BaseModel):
+    """Информация о делегировании доступа"""
+    active: bool
+    id: int
+    notification_success: bool = Field(alias="notificationSuccess")
+    
+    class Config:
+        populate_by_name = True
+
+
+class OwnerDetailed(BaseModel):
+    """Детальная информация о владельце аккаунта"""
+    id: int
+    phone: int
+    resolved: bool = True
+    delegations: Optional[List[Delegation]] = Field(default_factory=list)
+    fake_auth_on: Optional[bool] = Field(None, alias="fakeAuthOn")
+    for_test: Optional[bool] = Field(None, alias="forTest")
+    is_client: Optional[bool] = Field(None, alias="isClient")
+    never_logged_in: Optional[bool] = Field(None, alias="neverLoggedIn")
+    support_request_date: Optional[str] = Field(None, alias="supportRequestDate")
+    uid: Optional[str] = None
+    
+    class Config:
+        populate_by_name = True
+
+
+class CompanyDetailed(BaseModel):
+    """Детальная информация о компании"""
+    id: int
+    name: Optional[str] = None
+    short_name: str = Field(alias="shortName")
+    licensee_short: Optional[str] = Field(None, alias="licenseeShort")
+    payment_link: Optional[str] = Field(None, alias="paymentLink")
+    personal_account_link: Optional[str] = Field(None, alias="personalAccountLink")
+    support_chat_enabled: Optional[bool] = Field(None, alias="supportChatEnabled")
+    support_phone: Optional[str] = Field(None, alias="supportPhone")
+    
+    class Config:
+        populate_by_name = True
+
+
+class CityObject(BaseModel):
+    """Информация о городе"""
+    id: int
+    name: str
+    code_fias: Optional[str] = Field(None, alias="codeFias")
+    type: Optional[str] = None
+    type_full: Optional[str] = Field(None, alias="typeFull")
+    
+    class Config:
+        populate_by_name = True
+
+
+class CountryDetailed(BaseModel):
+    """Детальная информация о стране"""
+    name: str
+    short_name: str = Field(alias="shortName")
+    
+    class Config:
+        populate_by_name = True
+
+
+class FlatRange(BaseModel):
+    """Диапазон квартир"""
+    id: int
+    flat_start: int = Field(alias="flatStart")
+    flat_end: int = Field(alias="flatEnd")
+    
+    class Config:
+        populate_by_name = True
+
+
+class EntranceDetailed(BaseModel):
+    """Детальная информация о подъезде"""
+    id: int
+    number: str
+    prefix: Optional[str] = None
+    flat_start: int = Field(alias="flatStart")
+    flat_end: int = Field(alias="flatEnd")
+    additional_flat_ranges: List[FlatRange] = Field(default_factory=list, alias="additionalFlatRanges")
+    
+    class Config:
+        populate_by_name = True
+
+
+class HouseDetailed(BaseModel):
+    """Детальная информация о доме"""
+    id: int
+    number: str
+    block: Optional[str] = None
+    building: Optional[str] = None
+    housing: Optional[str] = None
+    code_fias: Optional[str] = Field(None, alias="codeFias")
+    type: Optional[str] = None
+    type_full: Optional[str] = Field(None, alias="typeFull")
+    geo_latitude: Optional[str] = Field(None, alias="geoLatitude")
+    geo_longitude: Optional[str] = Field(None, alias="geoLongitude")
+    geo_accuracy: Optional[str] = Field(None, alias="geoAccuracy")
+    
+    class Config:
+        populate_by_name = True
+
+
+class StreetDetailed(BaseModel):
+    """Детальная информация об улице"""
+    id: int
+    name: str
+    code_fias: Optional[str] = Field(None, alias="codeFias")
+    code_kladr: Optional[str] = Field(None, alias="codeKladr")
+    type: Optional[str] = None
+    type_full: Optional[str] = Field(None, alias="typeFull")
+    universal_code: Optional[str] = Field(None, alias="universalCode")
+    
+    class Config:
+        populate_by_name = True
+
+
+class AddressDetailed(BaseModel):
+    """Детальная информация об адресе"""
+    city: str
+    flat: int
+    country: CountryDetailed
+    city_object: Optional[CityObject] = Field(None, alias="cityObject")
+    entrance: EntranceDetailed
+    house: HouseDetailed
+    street: StreetDetailed
+    
+    class Config:
+        populate_by_name = True
+
+
+class Adapter(BaseModel):
+    """Адаптер домофона"""
+    rda_uid: str = Field(alias="rdaUid")
+    intercom_index: Optional[str] = Field(None, alias="intercomIndex")
+    camera_ids: List[int] = Field(default_factory=list, alias="cameraIds")
+    
+    class Config:
+        populate_by_name = True
+
+
+class FlatDetailed(BaseModel):
+    """Детальная информация о квартире"""
+    id: int
+    account_id: int = Field(alias="accountId")
+    address: AddressDetailed
+    virtual: bool
+    blocked: bool
+    owner: OwnerDetailed
+    adapters: List[Adapter] = Field(default_factory=list)
+    camera_id: Optional[int] = Field(None, alias="cameraId")
+    hardware_intercom_id: Optional[int] = Field(None, alias="hardwareIntercomId")
+    software_intercom_id: Optional[int] = Field(None, alias="softwareIntercomId")
+    rda_uid: Optional[str] = Field(None, alias="rdaUid")
+    translated: Optional[int] = None
+    
+    class Config:
+        populate_by_name = True
+
+
+class ServiceDetailed(BaseModel):
+    """Детальная информация об услуге"""
+    id: int
+    name: str
+    type: str
+    company_id: Optional[int] = Field(None, alias="companyId")
+    created_at: Optional[str] = Field(None, alias="createdAt")
+    custom_name: Optional[str] = Field(None, alias="customName")
+    delegation_tunings: Optional[DelegationTunings] = Field(None, alias="delegationTunings")
+    accounts: Optional[List] = None
+    
+    class Config:
+        populate_by_name = True
+
+
+class ConnectionDetailed(BaseModel):
+    """Детальная информация о подключении услуги"""
+    id: int
+    blocked: bool
+    currency: Optional[str] = None
+    tariff: Optional[float] = None
+    delegation_tunings: Optional[DelegationTunings] = Field(None, alias="delegationTunings")
+    flat: FlatDetailed
+    service: ServiceDetailed
+    
+    class Config:
+        populate_by_name = True
+
+
+class AccountInfo(BaseModel):
+    """Детальная информация об аккаунте"""
+    id: int
+    number: str
+    blocked: bool
+    billing_available: Optional[bool] = Field(None, alias="billingAvailable")
+    is_company_recurring_enabled: Optional[bool] = Field(None, alias="isCompanyRecurringEnabled")
+    terms_of_use_link: Optional[str] = Field(None, alias="termsOfUseLink")
+    block_reason: Optional[str] = Field(None, alias="blockReason")
+    paid_until: Optional[str] = Field(None, alias="paidUntil")
+    balance: Optional[Balance] = None
+    company: CompanyDetailed
+    owner: OwnerDetailed
+    connections: List[ConnectionDetailed] = Field(default_factory=list)
+    invoice: Optional[Invoice] = None
+    recurring_payment: Optional[RecurringPayment] = Field(None, alias="recurringPayment")
+    
+    class Config:
+        populate_by_name = True
+
+
+# Модели для получения подъездов с услугами
+class Camera(BaseModel):
+    """Камера видеонаблюдения"""
+    id: int
+    uri: str
+    active: bool
+    
+    class Config:
+        populate_by_name = True
+
+
+class Location(BaseModel):
+    """Локация домофона"""
+    id: int
+    name: str
+    
+    class Config:
+        populate_by_name = True
+
+
+class Intercom(BaseModel):
+    """Домофон"""
+    id: int
+    index: str
+    location: Optional[Location] = None
+    
+    class Config:
+        populate_by_name = True
+
+
+class RDA(BaseModel):
+    """Устройство домофонной автоматики (RosDomofonAdapter)"""
+    id: int
+    uid: str
+    active: bool
+    intercoms: List[Intercom] = Field(default_factory=list)
+    
+    class Config:
+        populate_by_name = True
+
+
+class ServiceWithFullDetails(BaseModel):
+    """Полная детальная информация об услуге с камерами, RDA и зависимыми услугами"""
+    id: int
+    name: str
+    type: str
+    company_id: Optional[int] = Field(None, alias="companyId")
+    custom_name: Optional[str] = Field(None, alias="customName")
+    autoconnection_enabled: Optional[bool] = Field(None, alias="autoconnectionEnabled")
+    delegation_tunings: Optional[DelegationTunings] = Field(None, alias="delegationTunings")
+    cameras: List[Camera] = Field(default_factory=list)
+    rdas: List[RDA] = Field(default_factory=list)
+    status: Optional[str] = None
+    tariff: Optional[float] = None
+    company: Optional[CompanyDetailed] = None
+    dependant_services: Optional[List] = Field(None, alias="dependantServices")
+    
+    class Config:
+        populate_by_name = True
+
+
+class EntranceWithServices(BaseModel):
+    """Подъезд с полным списком услуг"""
+    id: int
+    address_string: str = Field(alias="addressString")
+    services: List[ServiceWithFullDetails] = Field(default_factory=list)
+    
+    class Config:
+        populate_by_name = True
+
+
+class EntrancesResponse(BaseModel):
+    """Пагинированный ответ со списком подъездов"""
+    content: List[EntranceWithServices]
+    empty: bool
+    first: bool
+    last: bool
+    number: int
+    number_of_elements: int = Field(alias="numberOfElements")
+    pageable: Optional[Pageable] = None
+    size: int
+    sort: Optional[Sort] = None
+    total_elements: int = Field(alias="totalElements")
+    total_pages: int = Field(alias="totalPages")
+    
+    class Config:
+        populate_by_name = True
+
+
+# Модели для получения квартир абонента
+class FlatOwner(BaseModel):
+    """Владелец квартиры (упрощенная модель)"""
+    id: int
+
+
+class AbonentFlat(BaseModel):
+    """Квартира абонента"""
+    id: int
+    address: Address
+    owner: FlatOwner
+    virtual: bool
+
+
+# Разрешение forward references для моделей с отложенными ссылками
+CreateFlatResponse.model_rebuild()

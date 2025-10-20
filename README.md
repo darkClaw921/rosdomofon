@@ -1,8 +1,7 @@
 
 
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/rosdomofon)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/rosdomofon)
-
+[![Socket Badge](https://badge.socket.dev/pypi/package/rosdomofon/0.1.8?artifact_id=tar-gz)](https://badge.socket.dev/pypi/package/rosdomofon/0.1.8?artifact_id=tar-gz)
 # Поддержка и развитие
 Проект активно развивается. Вопросы и предложения по улучшению приветствуются через Issues.
 
@@ -24,6 +23,8 @@
   - `connect_service()` - подключение услуги
   - `get_account_connections()` - получение подключений аккаунта
   - `get_service_connections()` - получение подключений услуги
+  - `get_abonent_flats()` - получение всех квартир абонента с полными адресами
+  - `get_entrances()` - получение списка подъездов с услугами компании (с фильтрацией по адресу)
   - `block_account()` / `unblock_account()` - блокировка/разблокировка аккаунта
   - `block_connection()` / `unblock_connection()` - блокировка/разблокировка подключения
   - `send_message()` - отправка push-уведомлений (принимает словари или ID)
@@ -85,6 +86,40 @@ print(messages)
 
 ```python
 api.send_message_to_abonent(abonent_id, 'support', f'вы написали {messages.content[0].message}')
+```
+
+# пример получения квартир абонента
+
+```python
+# Получить все квартиры абонента
+flats = api.get_abonent_flats(1574870)
+print(f"Всего квартир: {len(flats)}")
+
+for flat in flats:
+    print(f"ID квартиры: {flat.id}")
+    print(f"Квартира {flat.address.flat}, подъезд {flat.address.entrance.number}")
+    print(f"Адрес: {flat.address.city}, {flat.address.street.name} {flat.address.house.number}")
+    print(f"Виртуальная: {flat.virtual}")
+    print(f"Владелец: {flat.owner.id}")
+    print("---")
+```
+
+# пример получения подъездов с услугами
+
+```python
+# Получить все подъезды компании
+entrances = api.get_entrances()
+print(f"Всего подъездов: {entrances.total_elements}")
+
+# Поиск подъездов по адресу с пагинацией
+entrances = api.get_entrances(address="Москва, Ленина", page=0, size=10)
+for entrance in entrances.content:
+    print(f"Подъезд {entrance.id}: {entrance.address_string}")
+    for service in entrance.services:
+        print(f"  - Услуга: {service.name} ({service.type})")
+        print(f"    Камеры: {len(service.cameras)}")
+        print(f"    RDA устройства: {len(service.rdas)}")
+        print(f"    Тариф: {service.tariff}")
 ```
 
 # Пример использования Kafka

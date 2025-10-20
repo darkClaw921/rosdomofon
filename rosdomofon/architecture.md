@@ -10,18 +10,23 @@
 
 **Содержит**:
 - **Модели авторизации**: `AuthResponse`
-- **Модели аккаунтов**: `Account`, `Owner`, `Company`, `CreateAccountRequest/Response`
-- **Модели квартир**: `CreateFlatRequest/Response`, `Flat`
-- **Модели услуг**: `Service`, `ServiceInfo`, `CreateConnectionRequest/Response`, `Connection`, `DelegationTunings`
-- **Модели адресов**: `Address`, `Country`, `Street`, `House`, `Entrance`
+- **Модели аккаунтов**: `Account`, `Owner`, `Company`, `CreateAccountRequest/Response`, `AccountInfo`
+- **Модели квартир**: `CreateFlatRequest/Response`, `Flat`, `FlatDetailed`, `AbonentFlat`, `FlatOwner`
+- **Модели услуг**: `Service`, `ServiceInfo`, `ServiceDetailed`, `ServiceWithFullDetails`, `CreateConnectionRequest/Response`, `Connection`, `ConnectionDetailed`, `DelegationTunings`
+- **Модели адресов**: `Address`, `AddressDetailed`, `Country`, `CountryDetailed`, `Street`, `StreetDetailed`, `House`, `HouseDetailed`, `Entrance`, `EntranceDetailed`, `CityObject`, `FlatRange`
+- **Модели подъездов**: `EntranceWithServices`, `EntrancesResponse`
+- **Модели оборудования**: `Camera`, `RDA`, `Intercom`, `Location`, `Adapter`
 - **Модели сообщений**: `Message`, `MessagesResponse`, `SendMessageRequest`, `AbonentInfo`, `Pageable`, `Sort`
 - **Модели Kafka**: `KafkaIncomingMessage`, `KafkaOutgoingMessage`, `KafkaAbonentInfo`, `KafkaFromAbonent`, `LocalizedPush`
 - **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpCountry`, `SignUpApplication`
+- **Модели детальной информации**: `AccountInfo`, `Balance`, `Invoice`, `RecurringPayment`, `Delegation`, `OwnerDetailed`, `CompanyDetailed`
 
 **Особенности**:
 - Валидация номера телефона в формате 79131234567
 - Поддержка алиасов полей для совместимости с API
 - Автоматическое преобразование типов данных
+- **Автоматическая конвертация int → str** в `CreateAccountRequest` для полей `number` и `phone` (решает проблему совместимости с моделями Kafka, где phone как int)
+- **Автоматическая конвертация int → str** в `CreateFlatRequest` для полей `entrance_id` и `flat_number` (решает проблему совместимости с событиями регистрации Kafka)
 - Отдельные модели для Kafka сообщений с поддержкой формата РосДомофон
 - **Свойство `text`** в `KafkaIncomingMessage` - автоматически извлекает текст из `message` или `localizedPush.message`
 
@@ -32,13 +37,16 @@
 - **Класс RosDomofonAPI** с методами:
   - `authenticate()` - авторизация в системе
   - `get_accounts()` - получение всех аккаунтов
+  - `get_account_info()` - получение детальной информации об аккаунте (баланс, подключения, квартиры)
   - `get_account_by_phone()` - поиск аккаунта по номеру телефона
   - `create_account()` - создание нового аккаунта
   - `create_flat()` - создание квартиры
   - `get_entrance_services()` - получение услуг подъезда
-  - `connect_service()` - подключение услуги
+  - `connect_service()` - подключение услуги (принимает flat_id как int или str)
   - `get_account_connections()` - получение подключений аккаунта
   - `get_service_connections()` - получение подключений услуги
+  - `get_abonent_flats()` - получение всех квартир абонента с полными адресами
+  - `get_entrances()` - получение списка подъездов с услугами компании (с фильтрацией по адресу)
   - `block_account()` / `unblock_account()` - блокировка/разблокировка аккаунта
   - `block_connection()` / `unblock_connection()` - блокировка/разблокировка подключения
   - `send_message()` - отправка push-уведомлений (принимает словари или ID)
@@ -70,9 +78,9 @@
 
 **Содержит**:
 - **Класс RosDomofonKafkaClient** с методами:
-  - `set_message_handler()` - установка обработчика входящих сообщений
-  - `set_signup_handler()` - установка обработчика событий регистрации (общий топик SIGN_UPS_ALL)
-  - `set_company_signup_handler()` - установка обработчика событий регистрации компании (топик SIGN_UPS_<company>)
+  - `set_message_handler()` - установка обработчика входящих сообщений (sync/async)
+  - `set_signup_handler()` - установка обработчика событий регистрации (общий топик SIGN_UPS_ALL, sync/async)
+  - `set_company_signup_handler()` - установка обработчика событий регистрации компании (топик SIGN_UPS_<company>, sync/async)
   - `start_consuming()` - запуск потребления сообщений в отдельном потоке
   - `start_signup_consuming()` - запуск потребления регистраций (общий топик) в отдельном потоке
   - `start_company_signup_consuming()` - запуск потребления регистраций компании в отдельном потоке
@@ -89,6 +97,7 @@
 - Поддержка топика регистраций `SIGN_UPS_<company>` (специфичный для компании)
 - Работа в отдельных потоках для неблокирующего потребления сообщений и регистраций
 - **Использование одной consumer group** для всех топиков (авторизация на уровне группы)
+- **Поддержка асинхронных обработчиков** - автоматическое определение типа обработчика (sync/async) и корректный вызов через `asyncio.run()`
 - Валидация данных через Pydantic модели
 - Контекстный менеджер для безопасного закрытия
 - Подробное логирование всех операций
@@ -164,6 +173,13 @@ total_messages = messages.total_elements
 # Создание аккаунта с валидацией
 response = api.create_account("ACC123456", "79061234567")
 account_id = response.id
+
+# Получение детальной информации об аккаунте
+account_info = api.get_account_info(904154)
+print(f"Баланс: {account_info.balance.balance} {account_info.balance.currency}")
+print(f"Заблокирован: {account_info.blocked}")
+for conn in account_info.connections:
+    print(f"Услуга: {conn.service.name}, Тариф: {conn.tariff}")
 ```
 
 #### Использование с Kafka
@@ -366,7 +382,13 @@ Kafka клиент поддерживает:
 
 ### Обработка событий регистрации
 
+**Поддержка синхронных и асинхронных обработчиков**
+
+Все обработчики Kafka могут быть как синхронными, так и асинхронными функциями. Клиент автоматически определяет тип функции и вызывает её корректным образом.
+
 #### Пример 1: Обработка общих регистраций (SIGN_UPS_ALL)
+
+**Синхронный обработчик:**
 
 ```python
 from rosdomofon import RosDomofonAPI
@@ -384,7 +406,7 @@ api = RosDomofonAPI(
     kafka_ssl_ca_cert_path="kafka-ca.crt"
 )
 
-# Обработчик регистраций (общий топик)
+# Синхронный обработчик регистраций (общий топик)
 def handle_signup(signup: SignUpEvent):
     print(f"[SIGN_UPS_ALL] Новая регистрация: {signup.abonent.phone}")
     print(f"Страна: {signup.address.country.name}")
@@ -397,10 +419,37 @@ api.set_signup_handler(handle_signup)
 api.start_signup_consumer()
 ```
 
-#### Пример 2: Обработка регистраций компании (SIGN_UPS_<company>)
+**Асинхронный обработчик:**
 
 ```python
-# Обработчик регистраций компании
+import asyncio
+from rosdomofon import RosDomofonAPI
+from models import SignUpEvent
+
+# Асинхронный обработчик с операциями БД
+async def handle_signup_async(signup: SignUpEvent):
+    print(f"[SIGN_UPS_ALL] Новая регистрация: {signup.abonent.phone}")
+    
+    # Асинхронное сохранение в БД
+    await db.save_signup(signup)
+    
+    # Асинхронная отправка в аналитику
+    await analytics.track_event("new_signup", {
+        "phone": signup.abonent.phone,
+        "city": signup.address.city
+    })
+
+# Установка и запуск
+api.set_signup_handler(handle_signup_async)
+api.start_signup_consumer()
+```
+
+#### Пример 2: Обработка регистраций компании (SIGN_UPS_<company>)
+
+**Синхронный обработчик:**
+
+```python
+# Синхронный обработчик регистраций компании
 def handle_company_signup(signup: SignUpEvent):
     print(f"[SIGN_UPS_<company>] Новая регистрация в нашей компании: {signup.abonent.phone}")
     print(f"Адрес: {signup.address.city}, ул.{signup.address.street.name}, д.{signup.address.house.number}")
@@ -417,7 +466,34 @@ api.set_company_signup_handler(handle_company_signup)
 api.start_company_signup_consumer()
 ```
 
+**Асинхронный обработчик:**
+
+```python
+# Асинхронный обработчик с внешними API вызовами
+async def handle_company_signup_async(signup: SignUpEvent):
+    print(f"[SIGN_UPS_<company>] Новая регистрация: {signup.abonent.phone}")
+    
+    # Асинхронная отправка приветствия через Kafka
+    await api_async.send_message_async(
+        signup.abonent.id,
+        'support',
+        'Добро пожаловать в нашу компанию!'
+    )
+    
+    # Асинхронная регистрация в CRM
+    await crm.create_contact({
+        "phone": signup.abonent.phone,
+        "address": f"{signup.address.city}, {signup.address.street.name}, {signup.address.house.number}"
+    })
+
+# Установка и запуск
+api.set_company_signup_handler(handle_company_signup_async)
+api.start_company_signup_consumer()
+```
+
 #### Пример 3: Одновременная обработка обоих топиков
+
+**Синхронные обработчики:**
 
 ```python
 # Обработка всех регистраций для аналитики
@@ -442,9 +518,53 @@ api.start_signup_consumer()
 api.start_company_signup_consumer()
 ```
 
+**Асинхронные обработчики:**
+
+```python
+# Асинхронная обработка всех регистраций для аналитики
+async def handle_all_signups_async(signup: SignUpEvent):
+    print(f"[Аналитика] Регистрация: {signup.abonent.phone}")
+    
+    # Асинхронная отправка в аналитику
+    await analytics.track_signup_async(signup)
+    
+    # Асинхронное обогащение данных
+    geo_data = await geo_service.get_location_info(signup.address.city)
+    await analytics.track_geo(geo_data)
+
+# Асинхронная обработка регистраций компании с комплексной логикой
+async def handle_our_signups_async(signup: SignUpEvent):
+    print(f"[Приветствие] Наш новый клиент: {signup.abonent.phone}")
+    
+    # Параллельное выполнение нескольких задач
+    await asyncio.gather(
+        # Отправить приветствие
+        api_async.send_message(
+            signup.abonent.id,
+            'support',
+            'Добро пожаловать! Мы рады видеть вас в нашей компании!'
+        ),
+        # Создать контакт в CRM
+        crm.create_contact(signup),
+        # Отправить email
+        email_service.send_welcome_email(signup.abonent.phone)
+    )
+
+# Запуск обоих обработчиков (можно комбинировать sync и async)
+api.set_signup_handler(handle_all_signups_async)
+api.set_company_signup_handler(handle_our_signups_async)
+api.start_signup_consumer()
+api.start_company_signup_consumer()
+```
+
 ### Преимущества Kafka интеграции
 - **Real-time обработка** сообщений от абонентов и событий регистрации
 - **Масштабируемость** - поддержка высокой нагрузки
 - **Надежность** - гарантированная доставка сообщений
 - **Гибкость** - возможность обработки событий несколькими сервисами
 - **Автоматизация** - мгновенная реакция на регистрацию новых абонентов
+- **Поддержка async/await** - возможность использования асинхронных обработчиков для:
+  - Параллельного выполнения задач через `asyncio.gather()`
+  - Интеграции с асинхронными БД (asyncpg, motor)
+  - Асинхронных HTTP запросов (httpx, aiohttp)
+  - Неблокирующей работы с внешними API
