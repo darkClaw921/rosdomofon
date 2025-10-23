@@ -3,6 +3,7 @@
 """
 from typing import List, Optional, Union
 import requests
+import time
 from loguru import logger
 from pprint import pprint
 from .models import (
@@ -32,6 +33,7 @@ class RosDomofonAPI:
         self.username = username
         self.password = password
         self.access_token: Optional[str] = None
+        self.token_expires_at: Optional[float] = None
         self.session = requests.Session()
         
         # Kafka клиент (опционально)
@@ -57,13 +59,39 @@ class RosDomofonAPI:
             headers["Authorization"] = f"Bearer {self.access_token}"
         return headers
     
-    def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """Выполнить HTTP запрос с обработкой ошибок"""
+    def _make_request(self, method: str, url: str, retry_auth: bool = True, **kwargs) -> requests.Response:
+        """
+        Выполнить HTTP запрос с обработкой ошибок
+        
+        Args:
+            method (str): HTTP метод
+            url (str): URL для запроса
+            retry_auth (bool): Флаг для повторной попытки при 401 ошибке (предотвращает бесконечный цикл)
+            **kwargs: Дополнительные параметры для requests
+            
+        Returns:
+            requests.Response: Ответ сервера
+        """
         try:
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
             logger.debug(f"{method} {url} - статус: {response.status_code}")
             return response
+        except requests.exceptions.HTTPError as e:
+            # Перехватываем 401 (Unauthorized) и пытаемся переавторизоваться
+            if e.response.status_code == 401 and retry_auth:
+                logger.warning("Токен истек (401 Unauthorized), выполняется переавторизация...")
+                # Переавторизуемся
+                self.authenticate()
+                # Обновляем заголовки с новым токеном
+                if 'headers' in kwargs and 'Authorization' in kwargs.get('headers', {}):
+                    kwargs['headers']['Authorization'] = f"Bearer {self.access_token}"
+                # Повторяем запрос (retry_auth=False чтобы избежать бесконечного цикла)
+                logger.info("Повторный запрос с новым токеном")
+                return self._make_request(method, url, retry_auth=False, **kwargs)
+            else:
+                logger.error(f"Ошибка запроса {method} {url}: {e}")
+                raise
         except requests.exceptions.RequestException as e:
             logger.error(f"Ошибка запроса {method} {url}: {e}")
             raise
@@ -97,7 +125,9 @@ class RosDomofonAPI:
         response = self._make_request("POST", url, headers=headers, data=data)
         auth_response = AuthResponse(**response.json())
         self.access_token = auth_response.access_token
-        logger.info("Авторизация успешна")
+        # Сохраняем время истечения токена (текущее время + expires_in секунд)
+        self.token_expires_at = time.time() + auth_response.expires_in
+        logger.info(f"Авторизация успешна, токен действителен {auth_response.expires_in} секунд")
         return auth_response
     
     def get_accounts(self) -> List[Account]:
@@ -382,20 +412,22 @@ class RosDomofonAPI:
         # API возвращает объект с пагинацией, нужно взять content
         return [Service(**service) for service in services_data.get('content', [])]
     
-    def get_entrances(self, address: Optional[str] = None, page: int = 0, size: int = 20) -> EntrancesResponse:
+    def get_entrances(self, address: Optional[str] = None, page: int = 0, size: int = 20, all: bool = False) -> EntrancesResponse:
         """
         Получить список подъездов с услугами компании
         
         Args:
             address (Optional[str]): Строка адреса для фильтрации подъездов
-            page (int): Номер страницы результатов (начиная с 0)
+            page (int): Номер страницы результатов (начиная с 0), игнорируется если all=True
             size (int): Количество записей на странице
+            all (bool): Если True, автоматически получит все данные со всех страниц (игнорирует параметр page)
             
         Returns:
-            EntrancesResponse: Пагинированный ответ со списком подъездов и их услугами
+            EntrancesResponse: Пагинированный ответ со списком подъездов и их услугами.
+                               При all=True возвращает все данные в одном ответе с полным списком в content.
             
         Example:
-            >>> # Получить все подъезды
+            >>> # Получить первую страницу подъездов
             >>> entrances = api.get_entrances()
             >>> print(entrances.total_elements)
             25
@@ -408,17 +440,51 @@ class RosDomofonAPI:
             ...         print(f"  - Услуга: {service.name} ({service.type})")
             ...         print(f"    Камеры: {len(service.cameras)}")
             ...         print(f"    RDA устройства: {len(service.rdas)}")
+            >>> 
+            >>> # Получить все подъезды автоматически (с пагинацией)
+            >>> all_entrances = api.get_entrances(all=True)
+            >>> print(f"Получено {len(all_entrances.content)} подъездов из {all_entrances.total_elements}")
+            >>> # Обработать все подъезды
+            >>> for entrance in all_entrances.content:
+            ...     print(f"Подъезд: {entrance.address_string}")
         """
         url = f"{self.BASE_URL}/abonents-service/api/v1/entrances"
         headers = self._get_headers()
         
-        params = {"page": page, "size": size}
-        if address:
-            params["address"] = address
-        
-        logger.info(f"Получение списка подъездов (страница {page}, размер {size})")
-        response = self._make_request("GET", url, headers=headers, params=params)
-        return EntrancesResponse(**response.json())
+        # Если нужны все данные, выполняем пагинацию автоматически
+        if all:
+            logger.info("Получение всех подъездов с автоматической пагинацией")
+            all_content = []
+            current_page = 0
+            
+            while True:
+                params = {"page": current_page, "size": size}
+                if address:
+                    params["address"] = address
+                
+                logger.debug(f"Загрузка страницы {current_page + 1} (размер {size})")
+                response = self._make_request("GET", url, headers=headers, params=params)
+                page_data = EntrancesResponse(**response.json())
+                
+                all_content.extend(page_data.content)
+                
+                # Проверяем, есть ли еще страницы
+                if page_data.last or len(page_data.content) == 0:
+                    logger.info(f"Получено всего {len(all_content)} подъездов")
+                    # Возвращаем объединенный результат
+                    page_data.content = all_content
+                    return page_data
+                
+                current_page += 1
+        else:
+            # Обычный запрос одной страницы
+            params = {"page": page, "size": size}
+            if address:
+                params["address"] = address
+            
+            logger.info(f"Получение списка подъездов (страница {page}, размер {size})")
+            response = self._make_request("GET", url, headers=headers, params=params)
+            return EntrancesResponse(**response.json())
 
     def block_account(self, account_number: str) -> bool:
         """

@@ -15,6 +15,7 @@ KAFKA_SSL_CA_CERT_PATH = os.getenv("KAFKA_SSL_CA_CERT_PATH")
 COMPANY_SHORT_NAME = os.getenv("COMPANY_SHORT_NAME")
 print(f'{KAFKA_SSL_CA_CERT_PATH=}')
 
+
 def handle_company_signup(signup: SignUpEvent):
     """
     Обработчик событий регистрации из Kafka (топик компании SIGN_UPS_<company_short_name>)
