@@ -1,9 +1,12 @@
 """
 Клиент для работы с API РосДомофон
 """
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict
 import requests
 import time
+import json
+import os
+from pathlib import Path
 from loguru import logger
 from pprint import pprint
 from .models import (
@@ -11,7 +14,7 @@ from .models import (
     CreateFlatRequest, CreateFlatResponse, Service, CreateConnectionRequest,
     CreateConnectionResponse, Connection, SendMessageRequest, MessagesResponse,
     AbonentInfo, KafkaIncomingMessage, SignUpEvent, AccountInfo, EntrancesResponse,
-    AbonentFlat
+    AbonentFlat, EntranceWithServices, FlatDetailed, EntranceDetailed
 )
 from .kafka_client import RosDomofonKafkaClient
 
@@ -29,12 +32,18 @@ class RosDomofonAPI:
                  kafka_group_id: Optional[str] = None,
                  kafka_username: Optional[str] = None,
                  kafka_password: Optional[str] = None,
-                 kafka_ssl_ca_cert_path: Optional[str] = None):
+                 kafka_ssl_ca_cert_path: Optional[str] = None,
+                 cache_file: Optional[str] = "entrances_cache.json"):
         self.username = username
         self.password = password
         self.access_token: Optional[str] = None
         self.token_expires_at: Optional[float] = None
         self.session = requests.Session()
+        self.cache_file = cache_file
+        self._entrances_cache: Dict[str, Dict] = {}
+        
+        # Загружаем кэш из файла при инициализации
+        self._load_cache()
         
         # Kafka клиент (опционально)
         self.kafka_client: Optional[RosDomofonKafkaClient] = None
@@ -51,6 +60,32 @@ class RosDomofonAPI:
         logger.info("Инициализация клиента РосДомофон API")
         if self.kafka_client:
             logger.info("Kafka клиент инициализирован")
+    
+    def _load_cache(self) -> None:
+        """Загрузить кэш подъездов из файла"""
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, 'r', encoding='utf-8') as f:
+                    self._entrances_cache = json.load(f)
+                logger.info(f"Загружен кэш подъездов из {self.cache_file}: {len(self._entrances_cache)} записей")
+            except Exception as e:
+                logger.warning(f"Ошибка загрузки кэша: {e}, создаем новый")
+                self._entrances_cache = {}
+        else:
+            self._entrances_cache = {}
+    
+    def _save_cache(self) -> None:
+        """Сохранить кэш подъездов в файл"""
+        try:
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(self._entrances_cache, f, ensure_ascii=False, indent=2)
+            logger.debug(f"Кэш подъездов сохранен в {self.cache_file}")
+        except Exception as e:
+            logger.error(f"Ошибка сохранения кэша: {e}")
+    
+    def _get_cache_key(self, city: str, street: str, house: str) -> str:
+        """Создать ключ кэша для адреса"""
+        return f"{city.lower().strip()}|{street.lower().strip()}|{house.lower().strip()}"
     
     def _get_headers(self, auth_required: bool = True) -> dict:
         """Получить заголовки для запроса"""
@@ -233,13 +268,13 @@ class RosDomofonAPI:
         response = self._make_request("POST", url, headers=headers, json=request_data.dict(by_alias=True))
         return CreateAccountResponse(**response.json())
     
-    def create_flat(self, entrance_id: str, flat_number: str, abonent_id: Optional[int] = None, virtual: bool = False) -> CreateFlatResponse:
+    def create_flat(self, flat_number: str, entrance_id: Optional[str] = None, abonent_id: Optional[int] = None, virtual: bool = False) -> CreateFlatResponse:
         """
         Создать квартиру в подъезде
         
         Args:
-            entrance_id (str): Идентификатор подъезда
             flat_number (str): Номер квартиры
+            entrance_id (Optional[str]): Идентификатор подъезда 
             abonent_id (Optional[int]): ID абонента (если известен номер телефона)
             virtual (bool): True если физическая трубка не установлена
             
@@ -247,7 +282,8 @@ class RosDomofonAPI:
             CreateFlatResponse: Полный объект квартиры с ID, адресом, владельцем и флагом виртуальности
             
         Example:
-            >>> flat = api.create_flat("26959", "1", abonent_id=1574870)
+            >>> # С указанием подъезда
+            >>> flat = api.create_flat("1", entrance_id="26959", abonent_id=1574870)
             >>> print(flat.id)
             842554
             >>> print(flat.address.city)
@@ -258,6 +294,9 @@ class RosDomofonAPI:
             1574870
             >>> print(flat.virtual)
             False
+            >>> 
+            >>> # Без указания подъезда (если API поддерживает)
+            >>> flat = api.create_flat("5", abonent_id=1574870, virtual=True)
         """
         url = f"{self.BASE_URL}/abonents-service/api/v1/flats"
         headers = self._get_headers()
@@ -269,7 +308,11 @@ class RosDomofonAPI:
             virtual=virtual
         )
         
-        logger.info(f"Создание квартиры {flat_number} в подъезде {entrance_id}")
+        log_msg = f"Создание квартиры {flat_number}"
+        if entrance_id:
+            log_msg += f" в подъезде {entrance_id}"
+        logger.info(log_msg)
+        
         response = self._make_request("POST", url, headers=headers, json=request_data.dict(by_alias=True, exclude_none=True))
         return CreateFlatResponse(**response.json())
     
@@ -485,6 +528,162 @@ class RosDomofonAPI:
             logger.info(f"Получение списка подъездов (страница {page}, размер {size})")
             response = self._make_request("GET", url, headers=headers, params=params)
             return EntrancesResponse(**response.json())
+    
+    def find_entrance_by_address(self, city: str, street: str, house: str) -> Optional[List[EntranceWithServices]]:
+        """
+        Найти подъезды по адресу
+        
+        Args:
+            city (str): Название города
+            street (str): Название улицы
+            house (str): Номер дома
+            
+        Returns:
+            Optional[List[EntranceWithServices]]: Список найденных подъездов или None если не найдено
+            
+        Example:
+            >>> # Поиск подъездов по адресу из события регистрации
+            >>> entrances = api.find_entrance_by_address("Чебоксары", "Академика РАН Х.М.Миначева", "19")
+            >>> if entrances:
+            ...     print(f"Найдено {len(entrances)} подъездов")
+            ...     for entrance in entrances:
+            ...         print(f"  Подъезд ID: {entrance.id}")
+            ...         print(f"  Адрес: {entrance.address_string}")
+            >>> else:
+            ...     print("Подъезды не найдены")
+        """
+        cache_key = self._get_cache_key(city, street, house)
+        
+        # Проверяем кэш
+        if cache_key in self._entrances_cache:
+            logger.debug(f"Найдено в кэше: {cache_key}")
+            cached_entrances = self._entrances_cache[cache_key]
+            # Преобразуем из словарей обратно в объекты
+            return [EntranceWithServices(**ent) for ent in cached_entrances.get('entrances', [])]
+        
+        # Формируем строку адреса для поиска
+        address_query = f"{city}, {street}, {house}"
+        logger.info(f"Поиск подъездов по адресу: {address_query}")
+        
+        try:
+            entrances_response = self.get_entrances(address=address_query, all=True)
+            
+            if entrances_response.content:
+                logger.info(f"Найдено {len(entrances_response.content)} подъездов по адресу {address_query}")
+                # Сохраняем в кэш
+                self._entrances_cache[cache_key] = {
+                    'entrances': [ent.dict() for ent in entrances_response.content]
+                }
+                self._save_cache()
+                return entrances_response.content
+            else:
+                logger.warning(f"Подъезды по адресу {address_query} не найдены")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Ошибка поиска подъездов по адресу {address_query}: {e}")
+            return None
+    
+    def find_entrance_by_address_and_flat(self, city: str, street: str, house: str, flat_number: int) -> Optional[EntranceWithServices]:
+        """
+        Найти подъезд по адресу и номеру квартиры
+        
+        Проверяет диапазоны квартир (flatStart, flatEnd, additionalFlatRanges) для определения
+        правильного подъезда. Использует кэширование для ускорения поиска.
+        
+        Args:
+            city (str): Название города
+            street (str): Название улицы
+            house (str): Номер дома
+            flat_number (int): Номер квартиры
+            
+        Returns:
+            Optional[EntranceWithServices]: Найденный подъезд или None если не найдено
+            
+        Example:
+            >>> # Поиск подъезда по адресу и квартире из события регистрации
+            >>> entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Филиппа Лукина", "5", 2)
+            >>> if entrance:
+            ...     print(f"Найден подъезд ID: {entrance.id}")
+            ...     print(f"  Адрес: {entrance.address_string}")
+            >>> else:
+            ...     print("Подъезд не найден")
+        """
+        logger.info(f"Поиск подъезда по адресу {city}, {street}, {house}, кв.{flat_number}")
+        
+        # Получаем все подъезды по адресу (с кэшированием)
+        entrances = self.find_entrance_by_address(city, street, house)
+        
+        if not entrances:
+            logger.warning(f"Подъезды по адресу {city}, {street}, {house} не найдены")
+            return None
+        
+        # Перебираем подъезды и проверяем диапазоны квартир
+        for entrance in entrances:
+            entrance_id = str(entrance.id)
+            
+            try:
+                # Получаем квартиры подъезда для проверки диапазонов
+                flats = self.get_entrance_flats(entrance_id)
+                
+                if not flats:
+                    continue
+                
+                # Получаем информацию о подъезде из адреса первой квартиры
+                entrance_info = flats[0].address.entrance
+                
+                # Проверяем основной диапазон
+                if entrance_info.flat_start <= flat_number <= entrance_info.flat_end:
+                    logger.info(f"Квартира {flat_number} найдена в подъезде {entrance_id} (основной диапазон: {entrance_info.flat_start}-{entrance_info.flat_end})")
+                    return entrance
+                
+                # Проверяем дополнительные диапазоны
+                for range_obj in entrance_info.additional_flat_ranges:
+                    if range_obj.flat_start <= flat_number <= range_obj.flat_end:
+                        logger.info(f"Квартира {flat_number} найдена в подъезде {entrance_id} (доп. диапазон: {range_obj.flat_start}-{range_obj.flat_end})")
+                        return entrance
+                        
+            except Exception as e:
+                logger.warning(f"Ошибка при проверке подъезда {entrance_id}: {e}")
+                continue
+        
+        logger.warning(f"Квартира {flat_number} не найдена ни в одном подъезде по адресу {city}, {street}, {house}")
+        return None
+
+    def get_entrance_flats(self, entrance_id: str) -> List[FlatDetailed]:
+        """
+        Получить список квартир подъезда по ID
+        
+        Args:
+            entrance_id (str): Идентификатор подъезда
+            
+        Returns:
+            List[FlatDetailed]: Список квартир подъезда с детальной информацией (адрес, владелец, оборудование)
+            
+        Example:
+            >>> # Получить все квартиры подъезда
+            >>> flats = api.get_entrance_flats("27222")
+            >>> print(f"Найдено {len(flats)} квартир в подъезде")
+            >>> for flat in flats:
+            ...     print(f"Квартира ID: {flat.id}")
+            ...     print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}, кв.{flat.address.flat}")
+            ...     print(f"  Владелец: {flat.owner.phone}")
+            ...     print(f"  Виртуальная: {flat.virtual}")
+            ...     print(f"  Заблокирована: {flat.blocked}")
+            ...     if flat.camera_id:
+            ...         print(f"  Камера ID: {flat.camera_id}")
+            ...     if flat.hardware_intercom_id:
+            ...         print(f"  Аппаратный домофон ID: {flat.hardware_intercom_id}")
+        """
+        url = f"{self.BASE_URL}/abonents-service/api/v1/entrances/{entrance_id}/flats"
+        headers = self._get_headers()
+        
+        logger.info(f"Получение списка квартир подъезда {entrance_id}")
+        response = self._make_request("GET", url, headers=headers)
+        flats_data = response.json()
+        
+        # API возвращает список квартир
+        return [FlatDetailed(**flat) for flat in flats_data]
 
     def block_account(self, account_number: str) -> bool:
         """

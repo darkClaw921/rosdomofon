@@ -80,13 +80,15 @@ class CreateAccountResponse(BaseModel):
 class CreateFlatRequest(BaseModel):
     """Запрос на создание квартиры"""
     abonent_id: Optional[int] = Field(None, alias="abonentId")
-    entrance_id: str = Field(alias="entranceId")
+    entrance_id: Optional[str] = Field(None, alias="entranceId")
     flat_number: str = Field(alias="flatNumber")
     virtual: bool = False
     
     @validator('entrance_id', 'flat_number', pre=True)
     def convert_to_string(cls, v):
         """Преобразование int → str для совместимости"""
+        if v is None:
+            return v
         if isinstance(v, int):
             return str(v)
         return v
@@ -497,7 +499,7 @@ class OwnerDetailed(BaseModel):
     """Детальная информация о владельце аккаунта"""
     id: int
     phone: int
-    resolved: bool = True
+    resolved: Optional[bool] = True
     delegations: Optional[List[Delegation]] = Field(default_factory=list)
     fake_auth_on: Optional[bool] = Field(None, alias="fakeAuthOn")
     for_test: Optional[bool] = Field(None, alias="forTest")
@@ -628,12 +630,12 @@ class Adapter(BaseModel):
 class FlatDetailed(BaseModel):
     """Детальная информация о квартире"""
     id: int
-    account_id: int = Field(alias="accountId")
+    account_id: Optional[int] = Field(None, alias="accountId")
     address: AddressDetailed
     virtual: bool
-    blocked: bool
+    blocked: Optional[bool] = False
     owner: OwnerDetailed
-    adapters: List[Adapter] = Field(default_factory=list)
+    adapters: Optional[List[Adapter]] = Field(default_factory=list)
     camera_id: Optional[int] = Field(None, alias="cameraId")
     hardware_intercom_id: Optional[int] = Field(None, alias="hardwareIntercomId")
     software_intercom_id: Optional[int] = Field(None, alias="softwareIntercomId")

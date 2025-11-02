@@ -46,19 +46,22 @@ def main():
     api = RosDomofonAPI(
         username=USERNAME, 
         password=PASSWORD, 
-        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, 
-        kafka_username=KAFKA_USERNAME, 
-        kafka_password=KAFKA_PASSWORD, 
-        kafka_group_id=KAFKA_GROUP_ID,
-        kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH,
-        company_short_name=COMPANY_SHORT_NAME
+        # kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, 
+        # kafka_username=KAFKA_USERNAME, 
+        # kafka_password=KAFKA_PASSWORD, 
+        # kafka_group_id=KAFKA_GROUP_ID,
+        # kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH,
+        # company_short_name=COMPANY_SHORT_NAME
         )
     api.authenticate()
-
+    find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Филиппа Лукина", "5", 65)
+    pprint(find_entrance)
+    # for entrance in entrances.content:
+    #     pprint(entrance.__dict__)
     # services = api.get_all_services()
     # pprint(services)
-    api.set_company_signup_handler(handle_company_signup)
-    api.start_company_signup_consumer()
+    # api.set_company_signup_handler(handle_company_signup)
+    # api.start_company_signup_consumer()
     # account = api.get_account_by_phone(79308312222)
     # print(account)
     # abonent_id=account.owner.id
@@ -74,11 +77,11 @@ def main():
     # service_connections = api.get_service_connections(connection_id)
     # print(service_connections)
 
-    time.sleep(100)
-    print("🛑 Остановка Kafka consumer регистраций компании...")
-    api.stop_company_signup_consumer()
-    print("🔒 Закрытие соединений...")
-    api.close()
+    # time.sleep(100)
+    # print("🛑 Остановка Kafka consumer регистраций компании...")
+    # api.stop_company_signup_consumer()
+    # print("🔒 Закрытие соединений...")
+    # api.close()
     # messages = api.get_abonent_messages(abonent_id, channel='support', page=0, size=10)
     # print(messages)
 

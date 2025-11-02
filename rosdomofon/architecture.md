@@ -27,6 +27,7 @@
 - Автоматическое преобразование типов данных
 - **Автоматическая конвертация int → str** в `CreateAccountRequest` для полей `number` и `phone` (решает проблему совместимости с моделями Kafka, где phone как int)
 - **Автоматическая конвертация int → str** в `CreateFlatRequest` для полей `entrance_id` и `flat_number` (решает проблему совместимости с событиями регистрации Kafka)
+- **Опциональное поле `entrance_id`** в `CreateFlatRequest` - позволяет создавать квартиры без указания подъезда (полезно при обработке событий регистрации, где подъезд неизвестен)
 - Отдельные модели для Kafka сообщений с поддержкой формата РосДомофон
 - **Свойство `text`** в `KafkaIncomingMessage` - автоматически извлекает текст из `message` или `localizedPush.message`
 
@@ -40,13 +41,16 @@
   - `get_account_info()` - получение детальной информации об аккаунте (баланс, подключения, квартиры)
   - `get_account_by_phone()` - поиск аккаунта по номеру телефона
   - `create_account()` - создание нового аккаунта
-  - `create_flat()` - создание квартиры
+  - `create_flat()` - создание квартиры (entrance_id опционально)
   - `get_entrance_services()` - получение услуг подъезда
   - `connect_service()` - подключение услуги (принимает flat_id как int или str)
   - `get_account_connections()` - получение подключений аккаунта
   - `get_service_connections()` - получение подключений услуги
   - `get_abonent_flats()` - получение всех квартир абонента с полными адресами
   - `get_entrances()` - получение списка подъездов с услугами компании (с фильтрацией по адресу, поддержка параметра all для автоматической пагинации всех данных)
+  - `find_entrance_by_address()` - поиск подъездов по адресу (город, улица, дом) с кэшированием
+  - `find_entrance_by_address_and_flat()` - поиск подъезда по адресу и номеру квартиры с проверкой диапазонов (flatStart, flatEnd, additionalFlatRanges)
+  - `get_entrance_flats()` - получение списка квартир подъезда по ID
   - `block_account()` / `unblock_account()` - блокировка/разблокировка аккаунта
   - `block_connection()` / `unblock_connection()` - блокировка/разблокировка подключения
   - `send_message()` - отправка push-уведомлений (принимает словари или ID)
@@ -74,6 +78,8 @@
 - Импорт моделей из отдельного файла models.py
 - Интегрированный Kafka клиент для real-time сообщений
 - Контекстный менеджер для автоматического закрытия соединений
+- **Кэширование подъездов в JSON файл** - подъезды кэшируются по адресу для ускорения повторных поисков
+- **Поиск подъезда по квартире** - автоматическая проверка диапазонов квартир (flatStart, flatEnd, additionalFlatRanges) для определения правильного подъезда
 
 ### `kafka_client.py`
 **Назначение**: Клиент для работы с Kafka сообщениями РосДомофон
@@ -190,6 +196,25 @@ for entrance in all_entrances.content:
     print(f"Подъезд: {entrance.address_string}")
     for service in entrance.services:
         print(f"  - {service.name} ({service.type})")
+
+# Получение квартир подъезда по ID
+flats = api.get_entrance_flats("27222")
+print(f"Найдено {len(flats)} квартир в подъезде")
+for flat in flats:
+    print(f"Квартира ID: {flat.id}")
+    print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}, кв.{flat.address.flat}")
+    print(f"  Владелец: {flat.owner.phone}")
+    print(f"  Виртуальная: {flat.virtual}")
+    if flat.camera_id:
+        print(f"  Камера ID: {flat.camera_id}")
+
+# Поиск подъезда по адресу и квартире (с проверкой диапазонов)
+entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Филиппа Лукина", "5", 2)
+if entrance:
+    print(f"Найден подъезд ID: {entrance.id}")
+    print(f"  Адрес: {entrance.address_string}")
+else:
+    print("Подъезд не найден")
 ```
 
 #### Использование с Kafka
@@ -379,7 +404,10 @@ Kafka клиент поддерживает:
 - `createdAt` - timestamp создания в миллисекундах
 - `uid` - уникальный идентификатор события
 
-**Обратите внимание**: Поле `flat` (квартира) отсутствует в событиях регистрации. Номер квартиры регистрируется позже отдельно.
+**Обратите внимание**: 
+- Поле `flat` (квартира) может отсутствовать или быть `None` в событиях регистрации. Номер квартиры часто регистрируется позже отдельно.
+- Поле `entrance_id` (подъезд) отсутствует в событиях регистрации. Есть только адрес (город, улица, дом). 
+- Для поиска подъезда по адресу используйте метод `find_entrance_by_address()` перед созданием квартиры.
 
 #### События регистрации компании (SIGN_UPS_<company>)
 Топик `SIGN_UPS_<company_short_name>` содержит события регистрации **только** для конкретной компании.
@@ -569,6 +597,139 @@ async def handle_our_signups_async(signup: SignUpEvent):
 api.set_signup_handler(handle_all_signups_async)
 api.set_company_signup_handler(handle_our_signups_async)
 api.start_signup_consumer()
+api.start_company_signup_consumer()
+```
+
+#### Пример 4: Создание квартиры при регистрации с поиском подъезда
+
+**Синхронный обработчик с поиском подъезда:**
+
+```python
+from rosdomofon import RosDomofonAPI
+from models import SignUpEvent
+
+api = RosDomofonAPI(
+    username="user",
+    password="pass",
+    kafka_bootstrap_servers="kafka.rosdomofon.com:443",
+    company_short_name="asd_asd",
+    kafka_group_id="rosdomofon_group",
+    kafka_username="kafka_user",
+    kafka_password="kafka_pass",
+    kafka_ssl_ca_cert_path="kafka-ca.crt"
+)
+
+def handle_company_signup_with_flat(signup: SignUpEvent):
+    print(f"[Регистрация] Новый абонент: {signup.abonent.phone}")
+    print(f"Адрес: {signup.address.city}, ул.{signup.address.street.name}, д.{signup.address.house.number}")
+    
+    # Проверяем наличие номера квартиры
+    if not signup.address.flat:
+        print("⚠️ Номер квартиры не указан при регистрации")
+        return
+    
+    # Ищем подъезд по адресу и квартире (с проверкой диапазонов)
+    entrance = api.find_entrance_by_address_and_flat(
+        city=signup.address.city,
+        street=signup.address.street.name,
+        house=signup.address.house.number,
+        flat_number=signup.address.flat
+    )
+    
+    if not entrance:
+        print("❌ Подъезд по этому адресу и квартире не найден")
+        return
+    
+    entrance_id = str(entrance.id)
+    
+    try:
+        # Создаем квартиру с найденным подъездом
+        flat = api.create_flat(
+            flat_number=str(signup.address.flat),
+            entrance_id=entrance_id,
+            abonent_id=signup.abonent.id,
+            virtual=signup.virtual
+        )
+        
+        print(f"✅ Квартира создана: ID {flat.id}")
+        
+        # Отправляем приветственное сообщение
+        api.send_message_to_abonent(
+            signup.abonent.id,
+            'support',
+            f'Добро пожаловать! Ваша квартира {signup.address.flat} успешно добавлена.'
+        )
+        
+    except Exception as e:
+        print(f"❌ Ошибка создания квартиры: {e}")
+
+# Установка и запуск
+api.set_company_signup_handler(handle_company_signup_with_flat)
+api.start_company_signup_consumer()
+```
+
+**Асинхронный обработчик с поиском подъезда:**
+
+```python
+async def handle_company_signup_with_flat_async(signup: SignUpEvent):
+    print(f"[Регистрация] Новый абонент: {signup.abonent.phone}")
+    
+    # Проверяем наличие номера квартиры
+    if not signup.address.flat:
+        print("⚠️ Номер квартиры не указан при регистрации")
+        # Сохраняем в БД для последующей обработки
+        await db.save_pending_signup(signup)
+        return
+    
+    # Ищем подъезды по адресу
+    entrances = api.find_entrance_by_address(
+        city=signup.address.city,
+        street=signup.address.street.name,
+        house=signup.address.house.number
+    )
+    
+    if not entrances or len(entrances) > 1:
+        # Сохраняем для ручной обработки
+        await db.save_for_manual_processing(signup, entrances)
+        return
+    
+    entrance_id = str(entrances[0].id)
+    
+    try:
+        # Параллельное выполнение операций
+        flat, _ = await asyncio.gather(
+            # Создание квартиры (выполняется в executor для синхронного API)
+            asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: api.create_flat(
+                    flat_number=str(signup.address.flat),
+                    entrance_id=entrance_id,
+                    abonent_id=signup.abonent.id,
+                    virtual=signup.virtual
+                )
+            ),
+            # Параллельное сохранение в БД
+            db.save_signup_success(signup)
+        )
+        
+        print(f"✅ Квартира создана: ID {flat.id}")
+        
+        # Отправляем приветствие
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: api.send_message_to_abonent(
+                signup.abonent.id,
+                'support',
+                f'Добро пожаловать! Ваша квартира {signup.address.flat} успешно добавлена.'
+            )
+        )
+        
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        await db.save_error(signup, str(e))
+
+# Установка и запуск
+api.set_company_signup_handler(handle_company_signup_with_flat_async)
 api.start_company_signup_consumer()
 ```
 
