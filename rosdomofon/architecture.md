@@ -18,7 +18,7 @@
 - **Модели оборудования**: `Camera`, `RDA`, `Intercom`, `Location`, `Adapter`
 - **Модели сообщений**: `Message`, `MessagesResponse`, `SendMessageRequest`, `AbonentInfo`, `Pageable`, `Sort`
 - **Модели Kafka**: `KafkaIncomingMessage`, `KafkaOutgoingMessage`, `KafkaAbonentInfo`, `KafkaFromAbonent`, `LocalizedPush`
-- **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpCountry`, `SignUpApplication`
+- **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpCountry`, `SignUpApplication`, `UpdateSignUpRequest`
 - **Модели детальной информации**: `AccountInfo`, `Balance`, `Invoice`, `RecurringPayment`, `Delegation`, `OwnerDetailed`, `CompanyDetailed`
 
 **Особенности**:
@@ -30,6 +30,7 @@
 - **Опциональное поле `entrance_id`** в `CreateFlatRequest` - позволяет создавать квартиры без указания подъезда (полезно при обработке событий регистрации, где подъезд неизвестен)
 - Отдельные модели для Kafka сообщений с поддержкой формата РосДомофон
 - **Свойство `text`** в `KafkaIncomingMessage` - автоматически извлекает текст из `message` или `localizedPush.message`
+- **Валидация статуса** в `UpdateSignUpRequest` - проверка допустимых значений статуса заявки ('unprocessed', 'processed', 'connected', 'delegated', 'rejected')
 
 ### `rosdomofon.py`
 **Назначение**: Основной модуль для работы с API РосДомофон
@@ -56,6 +57,7 @@
   - `send_message()` - отправка push-уведомлений (принимает словари или ID)
   - `send_message_to_abonent()` - упрощенная отправка сообщения по ID абонента
   - `get_abonent_messages()` - получение сообщений абонента
+  - `update_signup()` - обновление статуса заявки регистрации (статус, виртуальная трубка, причина отклонения)
   - **Kafka методы**:
     - `set_kafka_message_handler()` - установка обработчика входящих Kafka сообщений
     - `start_kafka_consumer()` - запуск потребления сообщений из Kafka
@@ -731,6 +733,65 @@ async def handle_company_signup_with_flat_async(signup: SignUpEvent):
 # Установка и запуск
 api.set_company_signup_handler(handle_company_signup_with_flat_async)
 api.start_company_signup_consumer()
+```
+
+#### Пример 5: Обновление статуса заявки регистрации
+
+**Обновление статуса заявки:**
+
+```python
+from rosdomofon import RosDomofonAPI
+
+api = RosDomofonAPI(username="user", password="pass")
+api.authenticate()
+
+# Изменить статус заявки на "обработана"
+success = api.update_signup(566836, status='processed')
+if success:
+    print("✅ Статус заявки обновлен")
+
+# Отклонить заявку с указанием причины
+success = api.update_signup(
+    signup_id=566836,
+    status='rejected',
+    rejected_reason='Неверный адрес'
+)
+if success:
+    print("✅ Заявка отклонена")
+
+# Установить виртуальную трубку
+success = api.update_signup(566836, is_virtual=True)
+if success:
+    print("✅ Установлена виртуальная трубка")
+
+# Комбинированное обновление: статус и виртуальная трубка
+success = api.update_signup(
+    signup_id=566836,
+    status='connected',
+    is_virtual=False
+)
+```
+
+**Использование в обработчике событий регистрации:**
+
+```python
+def handle_company_signup(signup: SignUpEvent):
+    print(f"[Регистрация] Новый абонент: {signup.abonent.phone}")
+    
+    try:
+        # Обработка заявки...
+        # После успешной обработки обновляем статус
+        api.update_signup(signup.id, status='processed')
+        print(f"✅ Заявка {signup.id} обработана")
+        
+    except Exception as e:
+        # При ошибке отклоняем заявку
+        api.update_signup(
+            signup_id=signup.id,
+            status='rejected',
+            rejected_reason=f'Ошибка обработки: {str(e)}'
+        )
+        print(f"❌ Заявка {signup.id} отклонена")
 ```
 
 ### Преимущества Kafka интеграции

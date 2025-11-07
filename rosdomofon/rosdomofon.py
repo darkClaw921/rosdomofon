@@ -14,7 +14,7 @@ from .models import (
     CreateFlatRequest, CreateFlatResponse, Service, CreateConnectionRequest,
     CreateConnectionResponse, Connection, SendMessageRequest, MessagesResponse,
     AbonentInfo, KafkaIncomingMessage, SignUpEvent, AccountInfo, EntrancesResponse,
-    AbonentFlat, EntranceWithServices, FlatDetailed, EntranceDetailed
+    AbonentFlat, EntranceWithServices, FlatDetailed, EntranceDetailed, UpdateSignUpRequest
 )
 from .kafka_client import RosDomofonKafkaClient
 
@@ -876,6 +876,60 @@ class RosDomofonAPI:
         logger.info(f"Получение сообщений абонента {abonent_id}")
         response = self._make_request("GET", url, headers=headers, params=params)
         return MessagesResponse(**response.json())
+    
+    def update_signup(self, signup_id: int, status: Optional[str] = None, is_virtual: Optional[bool] = None, rejected_reason: Optional[str] = None) -> bool:
+        """
+        Обновить статус заявки регистрации
+        
+        Args:
+            signup_id (int): ID заявки регистрации
+            status (Optional[str]): Новый статус заявки. Допустимые значения:
+                - 'unprocessed' - необработанная
+                - 'processed' - обработанная
+                - 'connected' - подключенная
+                - 'delegated' - делегированная
+                - 'rejected' - отклоненная
+            is_virtual (Optional[bool]): Флаг виртуальной трубки
+            rejected_reason (Optional[str]): Причина отклонения (используется при status='rejected')
+            
+        Returns:
+            bool: True если обновление прошло успешно
+            
+        Example:
+            >>> # Изменить статус заявки на "обработана"
+            >>> success = api.update_signup(566836, status='processed')
+            >>> print(success)
+            True
+            >>> 
+            >>> # Отклонить заявку с указанием причины
+            >>> success = api.update_signup(
+            ...     signup_id=566836,
+            ...     status='rejected',
+            ...     rejected_reason='Неверный адрес'
+            ... )
+            >>> 
+            >>> # Установить виртуальную трубку
+            >>> success = api.update_signup(566836, is_virtual=True)
+        """
+        url = f"{self.BASE_URL}/abonents-service/api/v2/sign_ups/{signup_id}"
+        headers = self._get_headers()
+        
+        request_data = UpdateSignUpRequest(
+            status=status,
+            is_virtual=is_virtual,
+            rejected_reason=rejected_reason
+        )
+        
+        logger.info(f"Обновление заявки регистрации {signup_id}")
+        if status:
+            logger.debug(f"Новый статус: {status}")
+        if is_virtual is not None:
+            logger.debug(f"Виртуальная трубка: {is_virtual}")
+        if rejected_reason:
+            logger.debug(f"Причина отклонения: {rejected_reason}")
+        
+        response = self._make_request("PATCH", url, headers=headers, json=request_data.dict(by_alias=True, exclude_none=True))
+        return response.status_code == 200
     
     # Методы для работы с Kafka
     def set_kafka_message_handler(self, handler: callable):

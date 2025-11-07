@@ -445,6 +445,25 @@ class SignUpEvent(BaseModel):
         populate_by_name = True
 
 
+class UpdateSignUpRequest(BaseModel):
+    """Запрос на обновление статуса заявки регистрации"""
+    is_virtual: Optional[bool] = Field(None, alias="isVirtual")
+    rejected_reason: Optional[str] = Field(None, alias="rejectedReason")
+    status: Optional[str] = None
+    
+    @validator('status')
+    def validate_status(cls, v):
+        """Валидация статуса - должен быть одним из допустимых значений"""
+        if v is not None:
+            allowed_statuses = ['unprocessed', 'processed', 'connected', 'delegated', 'rejected']
+            if v not in allowed_statuses:
+                raise ValueError(f'Статус должен быть одним из: {", ".join(allowed_statuses)}')
+        return v
+    
+    class Config:
+        populate_by_name = True
+
+
 # Модели для детальной информации об аккаунте
 class Balance(BaseModel):
     """Информация о балансе аккаунта"""
