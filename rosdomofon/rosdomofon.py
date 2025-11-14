@@ -615,8 +615,21 @@ class RosDomofonAPI:
         entrances = self.find_entrance_by_address(city, street, house)
         
         if not entrances:
-            logger.warning(f"Подъезды по адресу {city}, {street}, {house} не найдены")
-            return None
+            logger.warning(f"Подъезды по адресу {city}, {street}, {house} не найдены, пробуем поиск без улицы")
+            fallback_address = f"{city}, , {house}"
+            try:
+                fallback_response = self.get_entrances(address=fallback_address, all=True)
+                fallback_entrances = fallback_response.content if fallback_response else []
+            except Exception as e:
+                logger.error(f"Ошибка повторного поиска подъездов по адресу {fallback_address}: {e}")
+                fallback_entrances = []
+            
+            if fallback_entrances:
+                logger.info(f"Найдено {len(fallback_entrances)} подъездов по адресу {fallback_address}")
+                entrances = fallback_entrances
+            else:
+                logger.warning(f"Подъезды по адресу {fallback_address} не найдены")
+                return None
         
         # Перебираем подъезды и проверяем диапазоны квартир
         for entrance in entrances:

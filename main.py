@@ -54,9 +54,12 @@ def main():
         # company_short_name=COMPANY_SHORT_NAME
         )
     api.authenticate()
-    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Филиппа Лукина", "5", 65)
-    # pprint(find_entrance)
-    api.update_signup(1526294, status='connected')
+    # Чебоксары, Академика РАН Х.М.Миначева, 19, кв.143
+    find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Академика РАН Х.М.Миначева", "19", 143)
+    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "филиппа лукина", "5", 65)
+    # entrances = api.get_entrances('Чебоксары, , 19', all=True)
+    pprint(find_entrance)
+    # api.update_signup(1526294, status='connected')
     # for entrance in entrances.content:
     #     pprint(entrance.__dict__)
     # services = api.get_all_services()
