@@ -31,6 +31,7 @@
 - Отдельные модели для Kafka сообщений с поддержкой формата РосДомофон
 - **Свойство `text`** в `KafkaIncomingMessage` - автоматически извлекает текст из `message` или `localizedPush.message`
 - **Валидация статуса** в `UpdateSignUpRequest` - проверка допустимых значений статуса заявки ('unprocessed', 'processed', 'connected', 'delegated', 'rejected')
+- **Модель `Delegation`** допускает отсутствие полей `active` и `notificationSuccess` в ответах API, подставляя безопасные значения по умолчанию для совместимости с усечёнными payload
 
 ### `rosdomofon.py`
 **Назначение**: Основной модуль для работы с API РосДомофон

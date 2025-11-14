@@ -506,9 +506,9 @@ class RecurringPayment(BaseModel):
 
 class Delegation(BaseModel):
     """Информация о делегировании доступа"""
-    active: bool
+    active: Optional[bool] = False
     id: int
-    notification_success: bool = Field(alias="notificationSuccess")
+    notification_success: Optional[bool] = Field(default=False, alias="notificationSuccess")
     
     class Config:
         populate_by_name = True
