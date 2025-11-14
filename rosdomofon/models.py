@@ -115,13 +115,15 @@ class Service(BaseModel):
 
 class CreateConnectionRequest(BaseModel):
     """Запрос на подключение услуги"""
-    flat_id: int | str = Field(alias="flatId")
+    flat_id: int = Field(alias="flatId")
     account_id: Optional[int] = Field(None, alias="accountId")
     
     @validator('flat_id', pre=True)
-    def convert_flat_id_to_str(cls, v):
-        """Преобразование flat_id в строку для API"""
-        return str(v)
+    def convert_flat_id_to_int(cls, v):
+        """Преобразование flat_id в int для API"""
+        if isinstance(v, str):
+            return int(v)
+        return v
     
     class Config:
         populate_by_name = True

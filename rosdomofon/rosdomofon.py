@@ -126,6 +126,14 @@ class RosDomofonAPI:
                 return self._make_request(method, url, retry_auth=False, **kwargs)
             else:
                 logger.error(f"Ошибка запроса {method} {url}: {e}")
+                # Для ошибок 400 и 422 логируем тело ответа для диагностики
+                if e.response.status_code in (400, 422):
+                    try:
+                        error_body = e.response.json()
+                        logger.error(f"Тело ответа с ошибкой: {error_body}")
+                    except (ValueError, AttributeError):
+                        error_text = e.response.text
+                        logger.error(f"Текст ответа с ошибкой: {error_text}")
                 raise
         except requests.exceptions.RequestException as e:
             logger.error(f"Ошибка запроса {method} {url}: {e}")
@@ -364,10 +372,16 @@ class RosDomofonAPI:
         url = f"{self.BASE_URL}/abonents-service/api/v1/services/{service_id}/connections"
         headers = self._get_headers()
         
-        request_data = CreateConnectionRequest(flat_id=flat_id, account_id=account_id)
+        # Явное преобразование flat_id в int для гарантии правильного типа
+        flat_id_int = int(flat_id) if isinstance(flat_id, str) else flat_id
         
-        logger.info(f"Подключение услуги {service_id} к квартире {flat_id}")
-        response = self._make_request("POST", url, headers=headers, json=request_data.dict(by_alias=True, exclude_none=True))
+        request_data = CreateConnectionRequest(flat_id=flat_id_int, account_id=account_id)
+        # Используем model_dump для Pydantic v2 с правильной JSON сериализацией
+        request_body = request_data.model_dump(mode='json', by_alias=True, exclude_none=True)
+        
+        logger.info(f"Подключение услуги {service_id} к квартире {flat_id_int}")
+        logger.debug(f"Тело запроса: {request_body}")
+        response = self._make_request("POST", url, headers=headers, json=request_body)
         return CreateConnectionResponse(**response.json())
     
     def get_account_connections(self, account_id: int) -> List[Connection]:
