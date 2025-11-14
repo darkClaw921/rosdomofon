@@ -11,7 +11,7 @@
 **Содержит**:
 - **Модели авторизации**: `AuthResponse`
 - **Модели аккаунтов**: `Account`, `Owner`, `Company`, `CreateAccountRequest/Response`, `AccountInfo`
-- **Модели квартир**: `CreateFlatRequest/Response`, `Flat`, `FlatDetailed`, `AbonentFlat`, `FlatOwner`
+- **Модели квартир**: `CreateFlatRequest/Response`, `Flat`, `FlatDetailed`, `AbonentFlat`, `FlatOwner` (в `CreateFlatResponse` поле `address` опционально, так как API не всегда возвращает его)
 - **Модели услуг**: `Service`, `ServiceInfo`, `ServiceDetailed`, `ServiceWithFullDetails`, `CreateConnectionRequest/Response`, `Connection`, `ConnectionDetailed`, `DelegationTunings`
 - **Модели адресов**: `Address`, `AddressDetailed`, `Country`, `CountryDetailed`, `Street`, `StreetDetailed`, `House`, `HouseDetailed`, `Entrance`, `EntranceDetailed`, `CityObject`, `FlatRange`
 - **Модели подъездов**: `EntranceWithServices`, `EntrancesResponse`
@@ -28,6 +28,7 @@
 - **Автоматическая конвертация int → str** в `CreateAccountRequest` для полей `number` и `phone` (решает проблему совместимости с моделями Kafka, где phone как int)
 - **Автоматическая конвертация int → str** в `CreateFlatRequest` для полей `entrance_id` и `flat_number` (решает проблему совместимости с событиями регистрации Kafka)
 - **Опциональное поле `entrance_id`** в `CreateFlatRequest` - позволяет создавать квартиры без указания подъезда (полезно при обработке событий регистрации, где подъезд неизвестен)
+- **Опциональное поле `address`** в `CreateFlatResponse` - API РосДомофон не всегда возвращает адрес в ответе при создании квартиры (только `id`, `owner`, `virtual`), поэтому поле сделано опциональным для совместимости
 - Отдельные модели для Kafka сообщений с поддержкой формата РосДомофон
 - **Свойство `text`** в `KafkaIncomingMessage` - автоматически извлекает текст из `message` или `localizedPush.message`
 - **Валидация статуса** в `UpdateSignUpRequest` - проверка допустимых значений статуса заявки ('unprocessed', 'processed', 'connected', 'delegated', 'rejected')

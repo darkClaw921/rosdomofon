@@ -100,7 +100,7 @@ class CreateFlatRequest(BaseModel):
 class CreateFlatResponse(BaseModel):
     """Ответ при создании квартиры - полный объект с адресом и владельцем"""
     id: int
-    address: 'Address'
+    address: Optional['Address'] = None
     owner: 'FlatOwner'
     virtual: bool
 
