@@ -46,19 +46,21 @@ def main():
     api = RosDomofonAPI(
         username=USERNAME, 
         password=PASSWORD, 
-        # kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, 
-        # kafka_username=KAFKA_USERNAME, 
-        # kafka_password=KAFKA_PASSWORD, 
-        # kafka_group_id=KAFKA_GROUP_ID,
-        # kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH,
-        # company_short_name=COMPANY_SHORT_NAME
+        kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS, 
+        kafka_username=KAFKA_USERNAME, 
+        kafka_password=KAFKA_PASSWORD, 
+        kafka_group_id=KAFKA_GROUP_ID,
+        kafka_ssl_ca_cert_path=KAFKA_SSL_CA_CERT_PATH,
+        company_short_name=COMPANY_SHORT_NAME
         )
     api.authenticate()
+    print(f'{api.kafka_client=}')
     # Чебоксары, Академика РАН Х.М.Миначева, 19, кв.143
-    find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Академика РАН Х.М.Миначева", "19", 143)
+    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Академика РАН Х.М.Миначева", "19", 143)
     # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "филиппа лукина", "5", 65)
     # entrances = api.get_entrances('Чебоксары, , 19', all=True)
-    pprint(find_entrance)
+    all_signups = api.kafka_client.fetch_latest_signups(limit=2, company=True)
+    pprint(all_signups)
     # api.update_signup(1526294, status='connected')
     # for entrance in entrances.content:
     #     pprint(entrance.__dict__)

@@ -7,7 +7,7 @@ import time
 import inspect
 import asyncio
 from typing import Callable, Optional, Dict, Any
-from kafka import KafkaConsumer, KafkaProducer
+from kafka import KafkaConsumer, KafkaProducer, TopicPartition
 from loguru import logger
 
 from .models import KafkaIncomingMessage, KafkaOutgoingMessage, KafkaAbonentInfo, KafkaFromAbonent, SignUpEvent
@@ -492,6 +492,128 @@ class RosDomofonKafkaClient:
             self._company_signups_consumer_thread.join(timeout=5)
         
         logger.info("Остановлено потребление событий регистрации компании из Kafka")
+
+    def fetch_latest_signups(self,
+                             limit: int = 10,
+                             company: bool = False,
+                             timeout_seconds: float = 5.0) -> list[SignUpEvent]:
+        """
+        Получить последние N событий регистрации без запуска фонового потока.
+
+        Args:
+            limit (int): Количество регистраций (по умолчанию 10)
+            company (bool): True — читать из топика компании, False — общий
+            timeout_seconds (float): Максимальное время ожидания данных
+
+        Returns:
+            list[SignUpEvent]: Список последних регистраций (от старых к новым)
+        """
+        if limit <= 0:
+            raise ValueError("limit должен быть положительным")
+
+        topic = self.company_signups_topic if company else self.signups_topic
+        logger.info(f"Запрос последних {limit} регистраций из топика {topic}")
+
+        config = {
+            'bootstrap_servers': self.bootstrap_servers,
+            'auto_offset_reset': 'latest',
+            'enable_auto_commit': False,
+            'value_deserializer': lambda x: json.loads(x.decode('utf-8')),
+            'consumer_timeout_ms': 1000,
+            'api_version': (0, 10, 0),
+            'request_timeout_ms': 30000,
+            'session_timeout_ms': 10000,
+            'heartbeat_interval_ms': 3000,
+        }
+
+        if self.username and self.password:
+            config.update({
+                'security_protocol': 'SASL_SSL',
+                'sasl_mechanism': 'SCRAM-SHA-512',
+                'sasl_plain_username': self.username,
+                'sasl_plain_password': self.password,
+                'ssl_check_hostname': True,
+            })
+
+            if self.ssl_ca_cert_path:
+                config['ssl_cafile'] = self.ssl_ca_cert_path
+            else:
+                import ssl
+                config['ssl_check_hostname'] = False
+                config['ssl_context'] = ssl.create_default_context()
+                config['ssl_context'].check_hostname = False
+                config['ssl_context'].verify_mode = ssl.CERT_NONE
+
+        consumer: Optional[KafkaConsumer] = None
+        records: list[dict[str, Any]] = []
+
+        try:
+            consumer = KafkaConsumer(**config)
+            partitions = consumer.partitions_for_topic(topic)
+
+            if not partitions:
+                logger.warning(f"Топик {topic} недоступен или пуст")
+                return []
+
+            topic_partitions = [TopicPartition(topic, partition) for partition in partitions]
+            consumer.assign(topic_partitions)
+
+            end_offsets = consumer.end_offsets(topic_partitions)
+            partitions_with_data = set()
+
+            for tp in topic_partitions:
+                end_offset = end_offsets.get(tp, 0)
+                start_offset = max(end_offset - limit, 0)
+                consumer.seek(tp, start_offset)
+
+                if start_offset < end_offset:
+                    partitions_with_data.add(tp)
+
+            if not partitions_with_data:
+                logger.info("Новых событий регистрации нет")
+                return []
+
+            start_time = time.time()
+
+            while partitions_with_data and (time.time() - start_time) < timeout_seconds:
+                message_pack = consumer.poll(timeout_ms=500)
+
+                if not message_pack:
+                    continue
+
+                for tp, messages in message_pack.items():
+                    boundary = end_offsets.get(tp)
+
+                    for message in messages:
+                        if boundary is not None and message.offset >= boundary:
+                            continue
+
+                        try:
+                            signup_event = SignUpEvent(**message.value)
+                            records.append({
+                                "timestamp": message.timestamp or 0,
+                                "offset": message.offset,
+                                "event": signup_event,
+                            })
+                        except Exception as e:
+                            logger.error(f"Ошибка парсинга события регистрации: {e}")
+                            continue
+
+                        if boundary is not None and message.offset >= boundary - 1:
+                            partitions_with_data.discard(tp)
+
+                if len(records) >= limit:
+                    break
+
+            records.sort(key=lambda item: (item["timestamp"], item["offset"]))
+            latest_events = [item["event"] for item in records[-limit:]]
+
+            logger.info(f"Получено {len(latest_events)} регистраций из {topic}")
+            return latest_events
+
+        finally:
+            if consumer:
+                consumer.close()
     
     def _consume_messages(self):
         """Внутренний метод для потребления сообщений"""
