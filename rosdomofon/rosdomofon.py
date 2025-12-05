@@ -451,9 +451,10 @@ class RosDomofonAPI:
         """
         url = f"{self.BASE_URL}/abonents-service/api/v1/abonents/{abonent_id}/flats"
         headers = self._get_headers()
-        
+
         logger.info(f"Получение квартир абонента {abonent_id}")
         response = self._make_request("GET", url, headers=headers)
+        # pprint(response.__dict__)
         flats_data = response.json()
         return [AbonentFlat(**flat) for flat in flats_data]
 

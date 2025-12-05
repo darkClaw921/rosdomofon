@@ -56,8 +56,11 @@ def main():
     api.authenticate()
     # print(f'{api.kafka_client=}')
     # Чебоксары, Академика РАН Х.М.Миначева, 19, кв.143
-    find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Академика РАН Х.М.Миначева", "11", 221)
-    pprint(find_entrance)
+    # entrances = api.get_abonent_flats(1669357)
+    entrances = api.get_abonent_flats(1574870)
+    pprint(entrances)
+    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Академика РАН Х.М.Миначева", "11", 221)
+    # pprint(find_entrance)
     # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "филиппа лукина", "5", 65)
     # entrances = api.get_entrances('Чебоксары, , 19', all=True)
     # all_signups = api.kafka_client.fetch_latest_signups(limit=2, company=True)
