@@ -867,7 +867,7 @@ class RosDomofonAPI:
             True
         """
         recipients = [{'id': abonent_id, 'phone': 0}]
-        return self.send_message(recipients, channel, message)
+        return self._send_message(recipients, channel, message)
     
     def get_abonent_messages(self, abonent_id: int, channel: Optional[str] = None, page: int = 0, size: int = 20) -> MessagesResponse:
         """
