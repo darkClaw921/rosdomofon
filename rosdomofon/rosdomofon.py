@@ -247,6 +247,39 @@ class RosDomofonAPI:
             if account.owner.phone == phone:
                 return account
         return None
+
+    def get_account_flats(self, account_id: int) -> List[FlatDetailed]:
+        """
+        Получить все квартиры аккаунта абонента
+        
+        Args:
+            account_id (int): ID аккаунта
+            
+        Returns:
+            List[FlatDetailed]: Список квартир аккаунта с полной информацией (адрес, владелец, оборудование, адаптеры)
+            
+        Example:
+            >>> flats = api.get_account_flats(904154)
+            >>> for flat in flats:
+            ...     print(f"Квартира ID: {flat.id}")
+            ...     if flat.address:
+            ...         print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}, кв.{flat.address.flat}")
+            ...     if flat.owner.phone:
+            ...         print(f"  Владелец: {flat.owner.phone}")
+            ...     print(f"  Виртуальная: {flat.virtual}")
+            ...     print(f"  Заблокирована: {flat.blocked}")
+            ...     if flat.adapters:
+            ...         print(f"  Адаптеры: {len(flat.adapters)}")
+            ...     if flat.camera_id:
+            ...         print(f"  Камера ID: {flat.camera_id}")
+        """
+        url = f"{self.BASE_URL}/abonents-service/api/v1/accounts/{account_id}/flats"
+        headers = self._get_headers()
+        
+        logger.info(f"Получение квартир аккаунта {account_id}")
+        response = self._make_request("GET", url, headers=headers)
+        flats_data = response.json()
+        return [FlatDetailed(**flat) for flat in flats_data]
         
 
     def create_account(self, number: str, phone: str) -> CreateAccountResponse:

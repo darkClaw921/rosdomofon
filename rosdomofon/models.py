@@ -511,6 +511,8 @@ class Delegation(BaseModel):
     active: Optional[bool] = False
     id: int
     notification_success: Optional[bool] = Field(default=False, alias="notificationSuccess")
+    from_abonent: Optional[str] = Field(None, alias="fromAbonent")
+    to_abonent: Optional[str] = Field(None, alias="toAbonent")
     
     class Config:
         populate_by_name = True
@@ -519,7 +521,7 @@ class Delegation(BaseModel):
 class OwnerDetailed(BaseModel):
     """Детальная информация о владельце аккаунта"""
     id: int
-    phone: int
+    phone: Optional[int] = None
     resolved: Optional[bool] = True
     delegations: Optional[List[Delegation]] = Field(default_factory=list)
     fake_auth_on: Optional[bool] = Field(None, alias="fakeAuthOn")
@@ -652,8 +654,8 @@ class FlatDetailed(BaseModel):
     """Детальная информация о квартире"""
     id: int
     account_id: Optional[int] = Field(None, alias="accountId")
-    address: AddressDetailed
-    virtual: bool
+    address: Optional[AddressDetailed] = None
+    virtual: Optional[bool] = False
     blocked: Optional[bool] = False
     owner: OwnerDetailed
     adapters: Optional[List[Adapter]] = Field(default_factory=list)

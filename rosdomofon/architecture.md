@@ -46,6 +46,7 @@
   - `get_accounts()` - получение всех аккаунтов
   - `get_account_info()` - получение детальной информации об аккаунте (баланс, подключения, квартиры)
   - `get_account_by_phone()` - поиск аккаунта по номеру телефона
+  - `get_account_flats()` - получение всех квартир аккаунта абонента с полной информацией (адрес, владелец, оборудование, адаптеры)
   - `create_account()` - создание нового аккаунта
   - `create_flat()` - создание квартиры (entrance_id опционально)
   - `get_entrance_services()` - получение услуг подъезда
@@ -198,6 +199,22 @@ print(f"Баланс: {account_info.balance.balance} {account_info.balance.curre
 print(f"Заблокирован: {account_info.blocked}")
 for conn in account_info.connections:
     print(f"Услуга: {conn.service.name}, Тариф: {conn.tariff}")
+
+# Получение квартир аккаунта абонента
+account_flats = api.get_account_flats(904154)
+print(f"Найдено {len(account_flats)} квартир у аккаунта")
+for flat in account_flats:
+    print(f"Квартира ID: {flat.id}")
+    if flat.address:
+        print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}, кв.{flat.address.flat}")
+    if flat.owner.phone:
+        print(f"  Владелец: {flat.owner.phone}")
+    print(f"  Виртуальная: {flat.virtual}")
+    print(f"  Заблокирована: {flat.blocked}")
+    if flat.adapters:
+        print(f"  Адаптеры: {len(flat.adapters)}")
+    if flat.camera_id:
+        print(f"  Камера ID: {flat.camera_id}")
 
 # Получение всех подъездов с автоматической пагинацией
 all_entrances = api.get_entrances(all=True)
