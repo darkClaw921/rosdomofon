@@ -383,7 +383,7 @@ class RosDomofonAPI:
         logger.info(f"Получение услуг подъезда {entrance_id}")
         response = self._make_request("GET", url, headers=headers)
         services_data = response.json()
-        pprint(services_data)
+        # pprint(services_data)
         return [Service(**service) for service in services_data]
     
     def connect_service(self, service_id: int, flat_id: int | str, account_id: Optional[int] = None) -> CreateConnectionResponse:
@@ -501,7 +501,7 @@ class RosDomofonAPI:
         headers = self._get_headers()
         response = self._make_request("GET", url, headers=headers)
         services_data = response.json()
-        pprint(services_data)
+        # pprint(services_data)
         # API возвращает объект с пагинацией, нужно взять content
         return [Service(**service) for service in services_data.get('content', [])]
     
@@ -777,7 +777,7 @@ class RosDomofonAPI:
         logger.info(f"Получение списка квартир подъезда {entrance_id}")
         response = self._make_request("GET", url, headers=headers)
         flats_data = response.json()
-        pprint(flats_data)
+        # pprint(flats_data)
         # break
         # 1/0
         # API возвращает список квартир
