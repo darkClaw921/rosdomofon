@@ -506,13 +506,36 @@ class RecurringPayment(BaseModel):
         populate_by_name = True
 
 
+class DelegationAbonent(BaseModel):
+    """Абонент в делегировании"""
+    id: int
+    phone: int
+
+
 class Delegation(BaseModel):
     """Информация о делегировании доступа"""
     active: Optional[bool] = False
     id: int
     notification_success: Optional[bool] = Field(default=False, alias="notificationSuccess")
-    from_abonent: Optional[str] = Field(None, alias="fromAbonent")
-    to_abonent: Optional[str] = Field(None, alias="toAbonent")
+    from_abonent: Optional[DelegationAbonent] = Field(None, alias="fromAbonent")
+    to_abonent: Optional[DelegationAbonent] = Field(None, alias="toAbonent")
+    
+    @validator('from_abonent', 'to_abonent', pre=True)
+    def parse_abonent(cls, v):
+        """Преобразование строки или объекта в DelegationAbonent"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            # Если строка, пытаемся извлечь ID (для обратной совместимости)
+            # В этом случае создаем объект с phone=0, так как строка не содержит phone
+            try:
+                abonent_id = int(v)
+                return DelegationAbonent(id=abonent_id, phone=0)
+            except (ValueError, TypeError):
+                return None
+        if isinstance(v, dict):
+            return DelegationAbonent(**v)
+        return v
     
     class Config:
         populate_by_name = True
@@ -629,7 +652,7 @@ class StreetDetailed(BaseModel):
 class AddressDetailed(BaseModel):
     """Детальная информация об адресе"""
     city: str
-    flat: int
+    flat: Optional[int] = None
     country: CountryDetailed
     city_object: Optional[CityObject] = Field(None, alias="cityObject")
     entrance: EntranceDetailed
@@ -657,7 +680,7 @@ class FlatDetailed(BaseModel):
     address: Optional[AddressDetailed] = None
     virtual: Optional[bool] = False
     blocked: Optional[bool] = False
-    owner: OwnerDetailed
+    owner: Optional[OwnerDetailed] = None
     adapters: Optional[List[Adapter]] = Field(default_factory=list)
     camera_id: Optional[int] = Field(None, alias="cameraId")
     hardware_intercom_id: Optional[int] = Field(None, alias="hardwareIntercomId")
@@ -722,9 +745,14 @@ class AccountInfo(BaseModel):
 # Модели для получения подъездов с услугами
 class Camera(BaseModel):
     """Камера видеонаблюдения"""
-    id: int
-    uri: str
-    active: bool
+    id: Optional[int] = None
+    uid: Optional[int] = None
+    uri: Optional[str] = None
+    active: Optional[bool] = None
+    address: Optional["AddressDetailed"] = None
+    configuration: Optional[str] = None
+    private: Optional[bool] = None
+    rdva_id: Optional[int] = Field(None, alias="rdvaId")
     
     class Config:
         populate_by_name = True
@@ -760,6 +788,58 @@ class RDA(BaseModel):
         populate_by_name = True
 
 
+# Модели для зависимых услуг в entrances API
+class DependantServiceConnection(BaseModel):
+    """Подключение в зависимой услуге"""
+    id: Optional[int] = None
+    account: Optional[str] = None
+    blocked: Optional[bool] = None
+    currency: Optional[str] = None
+    delegation_tunings: Optional[DelegationTunings] = Field(None, alias="delegationTunings")
+    flat: Optional[FlatDetailed] = None
+    service: Optional[str] = None
+    tariff: Optional[float] = None
+    
+    class Config:
+        populate_by_name = True
+
+
+class DependantServiceAccount(BaseModel):
+    """Аккаунт в зависимой услуге"""
+    id: Optional[int] = None
+    balance: Optional[Balance] = None
+    billing_available: Optional[bool] = Field(None, alias="billingAvailable")
+    block_reason: Optional[str] = Field(None, alias="blockReason")
+    blocked: Optional[bool] = None
+    company: Optional[CompanyDetailed] = None
+    connections: Optional[List[DependantServiceConnection]] = Field(default_factory=list)
+    invoice: Optional[Invoice] = None
+    is_company_recurring_enabled: Optional[bool] = Field(None, alias="isCompanyRecurringEnabled")
+    number: Optional[str] = None
+    owner: Optional[OwnerDetailed] = None
+    paid_until: Optional[str] = Field(None, alias="paidUntil")
+    recurring_payment: Optional[RecurringPayment] = Field(None, alias="recurringPayment")
+    terms_of_use_link: Optional[str] = Field(None, alias="termsOfUseLink")
+    
+    class Config:
+        populate_by_name = True
+
+
+class DependantService(BaseModel):
+    """Зависимая услуга"""
+    id: Optional[int] = None
+    accounts: Optional[List[DependantServiceAccount]] = Field(default_factory=list)
+    company_id: Optional[int] = Field(None, alias="companyId")
+    created_at: Optional[str] = Field(None, alias="createdAt")
+    custom_name: Optional[str] = Field(None, alias="customName")
+    delegation_tunings: Optional[DelegationTunings] = Field(None, alias="delegationTunings")
+    name: Optional[str] = None
+    type: Optional[str] = None
+    
+    class Config:
+        populate_by_name = True
+
+
 class ServiceWithFullDetails(BaseModel):
     """Полная детальная информация об услуге с камерами, RDA и зависимыми услугами"""
     id: int
@@ -774,7 +854,7 @@ class ServiceWithFullDetails(BaseModel):
     status: Optional[str] = None
     tariff: Optional[float] = None
     company: Optional[CompanyDetailed] = None
-    dependant_services: Optional[List] = Field(None, alias="dependantServices")
+    dependant_services: Optional[List[DependantService]] = Field(None, alias="dependantServices")
     
     class Config:
         populate_by_name = True
@@ -785,6 +865,19 @@ class EntranceWithServices(BaseModel):
     id: int
     address_string: str = Field(alias="addressString")
     services: List[ServiceWithFullDetails] = Field(default_factory=list)
+    
+    class Config:
+        populate_by_name = True
+
+
+class EntranceDetailResponse(BaseModel):
+    """Детальная информация о подъезде по ID (ответ метода get_entrance)"""
+    id: int
+    address: Optional[AddressDetailed] = None
+    address_string: Optional[str] = Field(None, alias="addressString")
+    cameras: Optional[List[Camera]] = Field(default_factory=list)
+    rda: Optional[RDA] = None
+    services: Optional[List[ServiceWithFullDetails]] = Field(default_factory=list)
     
     class Config:
         populate_by_name = True

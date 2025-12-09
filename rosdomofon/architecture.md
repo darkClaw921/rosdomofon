@@ -14,8 +14,9 @@
 - **Модели квартир**: `CreateFlatRequest/Response`, `Flat`, `FlatDetailed`, `AbonentFlat`, `FlatOwner` (в `CreateFlatResponse` поле `address` опционально, так как API не всегда возвращает его)
 - **Модели услуг**: `Service`, `ServiceInfo`, `ServiceDetailed`, `ServiceWithFullDetails`, `CreateConnectionRequest/Response`, `Connection`, `ConnectionDetailed`, `DelegationTunings`
 - **Модели адресов**: `Address`, `AddressDetailed`, `Country`, `CountryDetailed`, `Street`, `StreetDetailed`, `House`, `HouseDetailed`, `Entrance`, `EntranceDetailed`, `CityObject`, `FlatRange`
-- **Модели подъездов**: `EntranceWithServices`, `EntrancesResponse`
-- **Модели оборудования**: `Camera`, `RDA`, `Intercom`, `Location`, `Adapter`
+- **Модели подъездов**: `EntranceWithServices`, `EntranceDetailResponse`, `EntrancesResponse`
+- **Модели оборудования**: `Camera` (с опциональными полями: address, configuration, private, rdvaId, uid), `RDA`, `Intercom`, `Location`, `Adapter`
+- **Модели зависимых услуг**: `DependantService`, `DependantServiceAccount`, `DependantServiceConnection` (для entrances API, все поля опциональны)
 - **Модели сообщений**: `Message`, `MessagesResponse`, `SendMessageRequest`, `AbonentInfo`, `Pageable`, `Sort`
 - **Модели Kafka**: `KafkaIncomingMessage`, `KafkaOutgoingMessage`, `KafkaAbonentInfo`, `KafkaFromAbonent`, `LocalizedPush`
 - **Модели регистраций (SIGN_UPS_ALL)**: `SignUpEvent`, `SignUpAbonent`, `SignUpAddress`, `SignUpHouse`, `SignUpStreet`, `SignUpCountry`, `SignUpApplication`, `UpdateSignUpRequest`
@@ -36,6 +37,10 @@
 - **Свойство `text`** в `KafkaIncomingMessage` - автоматически извлекает текст из `message` или `localizedPush.message`
 - **Валидация статуса** в `UpdateSignUpRequest` - проверка допустимых значений статуса заявки ('unprocessed', 'processed', 'connected', 'delegated', 'rejected')
 - **Модель `Delegation`** допускает отсутствие полей `active` и `notificationSuccess` в ответах API, подставляя безопасные значения по умолчанию для совместимости с усечёнными payload
+- **Модель `DelegationAbonent`** - абонент в делегировании с полями `id` и `phone`
+- **Поля `from_abonent` и `to_abonent` в `Delegation`** - принимают объект `DelegationAbonent` (API возвращает объект с `id` и `phone`), валидатор поддерживает обратную совместимость со строками
+- **Модели зависимых услуг** (`DependantService`, `DependantServiceAccount`, `DependantServiceConnection`) - все поля опциональны для совместимости с различными версиями API entrances
+- **Поле `owner` в `FlatDetailed`** сделано опциональным для поддержки различных контекстов использования
 
 ### `rosdomofon.py`
 **Назначение**: Основной модуль для работы с API РосДомофон
@@ -55,6 +60,7 @@
   - `get_service_connections()` - получение подключений услуги
   - `get_abonent_flats()` - получение всех квартир абонента с полными адресами
   - `get_entrances()` - получение списка подъездов с услугами компании (с фильтрацией по адресу, поддержка параметра all для автоматической пагинации всех данных)
+  - `get_entrance()` - получение информации о подъезде по ID
   - `find_entrance_by_address()` - поиск подъездов по адресу (город, улица, дом) с кэшированием
   - `find_entrance_by_address_and_flat()` - поиск подъезда по адресу и номеру квартиры с проверкой диапазонов (flatStart, flatEnd, additionalFlatRanges)
   - `get_entrance_flats()` - получение списка квартир подъезда по ID
@@ -223,6 +229,19 @@ for entrance in all_entrances.content:
     print(f"Подъезд: {entrance.address_string}")
     for service in entrance.services:
         print(f"  - {service.name} ({service.type})")
+
+# Получение информации о подъезде по ID
+entrance = api.get_entrance("30130")
+print(f"Подъезд ID: {entrance.id}")
+if entrance.address_string:
+    print(f"Адрес: {entrance.address_string}")
+if entrance.cameras:
+    print(f"Камеры: {len(entrance.cameras)}")
+    for camera in entrance.cameras:
+        if camera.uid and camera.uri:
+            print(f"  - Камера UID: {camera.uid}, URI: {camera.uri}")
+if entrance.rda:
+    print(f"RDA устройство: {entrance.rda.uid}")
 
 # Получение квартир подъезда по ID
 flats = api.get_entrance_flats("27222")

@@ -56,17 +56,48 @@ def main():
     api.authenticate()
     # print(f'{api.kafka_client=}')
     # Чебоксары, Академика РАН Х.М.Миначева, 19, кв.143
-    entrances = api.get_abonent_flats(1674092)
+    # entrances = api.get_abonent_flats(1488278)
+    # account = api.get_account_by_phone(79003341815)
+    # entrances2 = api.get_account_flats(account.id)
+    
     # entrances = api.get_account_flats(995917)
 
     # entrances = api.get_abonent_flats(1574870)
     # entrances = api.get_ac(1574870)
 
-    pprint(entrances)
-    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Академика РАН Х.М.Миначева", "11", 221)
+    # pprint(entrances)
+    # pprint(account)
+    # pprint(entrances2)
+    # Чебоксары, Филиппа Лукина, 11
+    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "Филиппа Лукина", "11", 32)
+    # Чебоксары, Академика РАН Х.М.Миначева, 11
+    find_entrance = api.find_entrance_by_address("Чебоксары", "Академика РАН", "11")
+
+    # # pprint(find_entrance)
+    # # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "филиппа лукина", "5", 500)
+    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "филиппа лукина", "11", 32)
+    pprint(find_entrance)
+    
     # pprint(find_entrance)
-    # find_entrance = api.find_entrance_by_address_and_flat("Чебоксары", "филиппа лукина", "5", 65)
-    # entrances = api.get_entrances('Чебоксары, , 19', all=True)
+#    https://rdba.rosdomofon.com/rdas-service/api/v1/entrances/30130/ 
+    # entrances = api.get_entrances('Чебоксары, Филиппа Лукина, 11')
+    # pprint(entrances)
+    # for entrance in entrances.content:
+    #     pprint(entrance.__dict__)
+    #     flats = api.get_entrance_flats(entrance.id)
+    #     print(f'всего квартир: {len(flats)} в подъезде {entrance.id}')
+    #     for flat in flats:
+    #         print(flat.address.city, flat.address.street.name, flat.address.house.number, flat.address.flat)
+    #         print(f'{flat.address.entrance.flat_start}-{flat.address.entrance.flat_end}')
+    #         print('--------------------------------')
+            
+
+    # flats = api.get_entrance_flats(128564)
+    # flats = api.get_entrance_services(30130)
+    # flats = api.get_entrance_services(128564)
+    # flats=api.get_entrance(30130)
+    # pprint(flats)
+    # pprint(entrances.__dict__)
     # all_signups = api.kafka_client.fetch_latest_signups(limit=2, company=True)
     # pprint(all_signups)
     # api.update_signup(1526294, status='connected')

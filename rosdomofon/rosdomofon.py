@@ -14,7 +14,7 @@ from .models import (
     CreateFlatRequest, CreateFlatResponse, Service, CreateConnectionRequest,
     CreateConnectionResponse, Connection, SendMessageRequest, MessagesResponse,
     AbonentInfo, KafkaIncomingMessage, SignUpEvent, AccountInfo, EntrancesResponse,
-    AbonentFlat, EntranceWithServices, FlatDetailed, EntranceDetailed, UpdateSignUpRequest
+    AbonentFlat, EntranceWithServices, EntranceDetailResponse, FlatDetailed, EntranceDetailed, UpdateSignUpRequest
 )
 from .kafka_client import RosDomofonKafkaClient
 
@@ -263,7 +263,8 @@ class RosDomofonAPI:
             >>> for flat in flats:
             ...     print(f"Квартира ID: {flat.id}")
             ...     if flat.address:
-            ...         print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}, кв.{flat.address.flat}")
+            ...         flat_num = f", кв.{flat.address.flat}" if flat.address.flat else ""
+            ...         print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}{flat_num}")
             ...     if flat.owner.phone:
             ...         print(f"  Владелец: {flat.owner.phone}")
             ...     print(f"  Виртуальная: {flat.virtual}")
@@ -382,6 +383,7 @@ class RosDomofonAPI:
         logger.info(f"Получение услуг подъезда {entrance_id}")
         response = self._make_request("GET", url, headers=headers)
         services_data = response.json()
+        pprint(services_data)
         return [Service(**service) for service in services_data]
     
     def connect_service(self, service_id: int, flat_id: int | str, account_id: Optional[int] = None) -> CreateConnectionResponse:
@@ -555,6 +557,7 @@ class RosDomofonAPI:
                 
                 logger.debug(f"Загрузка страницы {current_page + 1} (размер {size})")
                 response = self._make_request("GET", url, headers=headers, params=params)
+                
                 page_data = EntrancesResponse(**response.json())
                 
                 all_content.extend(page_data.content)
@@ -575,7 +578,37 @@ class RosDomofonAPI:
             
             logger.info(f"Получение списка подъездов (страница {page}, размер {size})")
             response = self._make_request("GET", url, headers=headers, params=params)
+            pprint(response.json())
             return EntrancesResponse(**response.json())
+    
+    def get_entrance(self, entrance_id: str) -> EntranceDetailResponse:
+        """
+        Получить информацию о подъезде по ID
+        
+        Args:
+            entrance_id (str): Идентификатор подъезда
+            
+        Returns:
+            EntranceDetailResponse: Объект подъезда с детальной информацией (адрес, камеры, RDA)
+            
+        Example:
+            >>> entrance = api.get_entrance("30130")
+            >>> print(f"Подъезд ID: {entrance.id}")
+            >>> if entrance.address_string:
+            ...     print(f"Адрес: {entrance.address_string}")
+            >>> if entrance.cameras:
+            ...     print(f"Камеры: {len(entrance.cameras)}")
+            ...     for camera in entrance.cameras:
+            ...         print(f"  - Камера UID: {camera.uid}, URI: {camera.uri}")
+            >>> if entrance.rda:
+            ...     print(f"RDA устройство: {entrance.rda.uid}")
+        """
+        url = f"{self.BASE_URL}/rdas-service/api/v1/entrances/{entrance_id}/"
+        headers = self._get_headers()
+        
+        logger.info(f"Получение информации о подъезде {entrance_id}")
+        response = self._make_request("GET", url, headers=headers)
+        return EntranceDetailResponse(**response.json())
     
     def find_entrance_by_address(self, city: str, street: str, house: str) -> Optional[List[EntranceWithServices]]:
         """
@@ -661,7 +694,7 @@ class RosDomofonAPI:
         
         # Получаем все подъезды по адресу (с кэшированием)
         entrances = self.find_entrance_by_address(city, street, house)
-        
+         
         if not entrances:
             logger.warning(f"Подъезды по адресу {city}, {street}, {house} не найдены, пробуем поиск без улицы")
             fallback_address = f"{city}, , {house}"
@@ -727,7 +760,9 @@ class RosDomofonAPI:
             >>> print(f"Найдено {len(flats)} квартир в подъезде")
             >>> for flat in flats:
             ...     print(f"Квартира ID: {flat.id}")
-            ...     print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}, кв.{flat.address.flat}")
+            ...     if flat.address:
+            ...         flat_num = f", кв.{flat.address.flat}" if flat.address.flat else ""
+            ...         print(f"  Адрес: {flat.address.city}, ул.{flat.address.street.name}, д.{flat.address.house.number}{flat_num}")
             ...     print(f"  Владелец: {flat.owner.phone}")
             ...     print(f"  Виртуальная: {flat.virtual}")
             ...     print(f"  Заблокирована: {flat.blocked}")
@@ -742,7 +777,9 @@ class RosDomofonAPI:
         logger.info(f"Получение списка квартир подъезда {entrance_id}")
         response = self._make_request("GET", url, headers=headers)
         flats_data = response.json()
-        
+        pprint(flats_data)
+        # break
+        # 1/0
         # API возвращает список квартир
         return [FlatDetailed(**flat) for flat in flats_data]
 
