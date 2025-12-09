@@ -3,7 +3,7 @@ Pydantic модели для работы с API РосДомофон
 """
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 # Модели для авторизации
@@ -55,14 +55,16 @@ class CreateAccountRequest(BaseModel):
     number: str
     phone: str
     
-    @validator('number', 'phone', pre=True)
+    @field_validator('number', 'phone', mode='before')
+    @classmethod
     def convert_to_string(cls, v):
         """Преобразование int → str для совместимости с моделями, где phone как int"""
         if isinstance(v, int):
             return str(v)
         return v
     
-    @validator('phone')
+    @field_validator('phone')
+    @classmethod
     def validate_phone(cls, v):
         """Валидация телефона - должен быть в формате 79131234567"""
         if not v.isdigit() or len(v) != 11 or not v.startswith('7'):
@@ -84,7 +86,8 @@ class CreateFlatRequest(BaseModel):
     flat_number: str = Field(alias="flatNumber")
     virtual: bool = False
     
-    @validator('entrance_id', 'flat_number', pre=True)
+    @field_validator('entrance_id', 'flat_number', mode='before')
+    @classmethod
     def convert_to_string(cls, v):
         """Преобразование int → str для совместимости"""
         if v is None:
@@ -118,7 +121,8 @@ class CreateConnectionRequest(BaseModel):
     flat_id: int = Field(alias="flatId")
     account_id: Optional[int] = Field(None, alias="accountId")
     
-    @validator('flat_id', pre=True)
+    @field_validator('flat_id', mode='before')
+    @classmethod
     def convert_flat_id_to_int(cls, v):
         """Преобразование flat_id в int для API"""
         if isinstance(v, str):
@@ -453,7 +457,8 @@ class UpdateSignUpRequest(BaseModel):
     rejected_reason: Optional[str] = Field(None, alias="rejectedReason")
     status: Optional[str] = None
     
-    @validator('status')
+    @field_validator('status')
+    @classmethod
     def validate_status(cls, v):
         """Валидация статуса - должен быть одним из допустимых значений"""
         if v is not None:
@@ -520,7 +525,8 @@ class Delegation(BaseModel):
     from_abonent: Optional[DelegationAbonent] = Field(None, alias="fromAbonent")
     to_abonent: Optional[DelegationAbonent] = Field(None, alias="toAbonent")
     
-    @validator('from_abonent', 'to_abonent', pre=True)
+    @field_validator('from_abonent', 'to_abonent', mode='before')
+    @classmethod
     def parse_abonent(cls, v):
         """Преобразование строки или объекта в DelegationAbonent"""
         if v is None:

@@ -38,7 +38,8 @@
 - **Валидация статуса** в `UpdateSignUpRequest` - проверка допустимых значений статуса заявки ('unprocessed', 'processed', 'connected', 'delegated', 'rejected')
 - **Модель `Delegation`** допускает отсутствие полей `active` и `notificationSuccess` в ответах API, подставляя безопасные значения по умолчанию для совместимости с усечёнными payload
 - **Модель `DelegationAbonent`** - абонент в делегировании с полями `id` и `phone`
-- **Поля `from_abonent` и `to_abonent` в `Delegation`** - принимают объект `DelegationAbonent` (API возвращает объект с `id` и `phone`), валидатор поддерживает обратную совместимость со строками
+- **Поля `from_abonent` и `to_abonent` в `Delegation`** - принимают объект `DelegationAbonent` (API возвращает объект с `id` и `phone`), валидатор поддерживает обратную совместимость со строками. Используется `field_validator` с `mode='before'` для преобразования словарей и строк в `DelegationAbonent`
+- **Валидаторы используют синтаксис Pydantic 2.x** - все валидаторы используют `field_validator` вместо устаревшего `validator` для совместимости с Pydantic 2.x
 - **Модели зависимых услуг** (`DependantService`, `DependantServiceAccount`, `DependantServiceConnection`) - все поля опциональны для совместимости с различными версиями API entrances
 - **Поле `owner` в `FlatDetailed`** сделано опциональным для поддержки различных контекстов использования
 
